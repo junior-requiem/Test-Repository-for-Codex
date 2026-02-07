@@ -55,3 +55,53 @@ export interface UserProgress {
   hearts: number;
   badges: string[];
 }
+
+export interface QuestionAttempt {
+  questionId: string;
+  skillId: string;
+  correct: boolean;
+  timeToCompleteMs: number;
+  attemptedAt: string;
+}
+
+export interface QuestionProgress {
+  questionId: string;
+  skillId: string;
+  lastSeenAt: string | null;
+  correctCount: number;
+  incorrectCount: number;
+  correctStreak: number;
+  lastCorrectAt: string | null;
+  lastIncorrectAt: string | null;
+  intervalDays: number;
+  nextReviewAt: string | null;
+}
+
+export interface SkillAccuracy {
+  skillId: string;
+  totalAttempts: number;
+  correctAttempts: number;
+  accuracy: number;
+  averageTimeMs: number;
+}
+
+export interface ReviewAnalytics {
+  accuracyBySkill: SkillAccuracy[];
+  overallAccuracy: number;
+  averageTimeMs: number;
+}
+
+export interface ReviewQueueItem {
+  questionId: string;
+  skillId: string;
+  priority: number;
+  reason: string;
+  nextReviewAt: string | null;
+}
+
+export interface ReviewSummary {
+  queue: ReviewQueueItem[];
+  weakSkills: string[];
+  analytics: ReviewAnalytics;
+  questionProgress: QuestionProgress[];
+}
