@@ -46,3 +46,12 @@ export type Question =
   | MultipleChoiceQuestion
   | FillInQuestion
   | MatchingQuestion;
+
+export interface UserProgress {
+  xp: number;
+  level: number;
+  streakCount: number;
+  lastActiveDate: string | null;
+  hearts: number;
+  badges: string[];
+}
