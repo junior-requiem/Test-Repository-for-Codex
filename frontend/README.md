@@ -27,3 +27,12 @@ python3 -m http.server 4173 --directory frontend
 ```
 
 Then open: `http://localhost:4173`.
+
+
+## Run from repository root
+
+```bash
+python3 -m http.server 4173
+```
+
+Then open: `http://localhost:4173` (auto-redirects to `frontend/index.html`).
