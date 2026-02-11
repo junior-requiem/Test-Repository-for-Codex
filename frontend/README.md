@@ -1,6 +1,6 @@
 # Frontend
 
-Interactive single-page app with hash routes, a Duolingo-style section path, and animated green success feedback for correct answers.
+Interactive single-page app with hash routes, Apple-style typography/layout, and a Duolingo-inspired learning path.
 
 ## Routes
 | Screen | Route |
@@ -11,12 +11,11 @@ Interactive single-page app with hash routes, a Duolingo-style section path, and
 | Review | `/review` |
 | Profile | `/profile` |
 
-## Ordered learning path
-- Unit 1: Core HR foundations
-- Unit 2: Benefits and payroll
-- Unit 3: Talent and performance
-
-Each lesson node is locked until all previous lessons are completed.
+## UX highlights
+- Apple-inspired visual hierarchy (SF/Apple system font stack, clean spacing, rounded cards).
+- Duolingo-inspired zig-zag lesson path with one-next-node unlocking.
+- Green animated success feedback on correct answers and lightweight confetti burst.
+- Persistent daily progress strip with XP, streak, hearts, and quest bars.
 
 ## Run locally
 From the repository root:
@@ -27,7 +26,6 @@ python3 -m http.server 4173 --directory frontend
 
 Then open: `http://localhost:4173`.
 
-
 ## Run from repository root
 
 ```bash
@@ -35,9 +33,3 @@ python3 -m http.server 4173
 ```
 
 Then open: `http://localhost:4173` (auto-redirects to `frontend/index.html`).
-
-
-## Interaction highlights
-- Duolingo-inspired section cards and alternating path nodes.
-- Only the next lesson node is unlocked at a time.
-- Correct answers trigger green success animations and lesson completion states.

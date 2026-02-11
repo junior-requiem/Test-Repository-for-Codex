@@ -6,114 +6,84 @@ const routes = [
   { name: "Profile", path: "/profile" },
 ];
 
-const units = [
+const sections = [
   {
-    id: "unit-1",
-    title: "Unit 1",
-    subtitle: "Core HR foundations",
-    badge: "Start",
+    id: "foundation",
+    title: "Section 1, Unit 1",
+    subtitle: "HCM Foundations",
+    color: "section-primary",
     lessons: [
       {
-        id: "hr-1",
+        id: "l1",
         title: "Worker Lifecycle",
-        subtitle: "Hire, transfer, terminate",
+        description: "Hire, transfer, terminate",
         xp: 20,
         question: {
-          prompt: "Before terminating an employee, what should be completed first?",
-          options: ["Pending payroll approvals", "Supplier invoice matching", "PO dispatch"],
+          prompt: "Before terminating an employee, what should happen first?",
+          options: ["Finalize pending payroll approvals", "Delete worker record", "Close supplier account"],
           answer: 0,
         },
       },
       {
-        id: "hr-2",
-        title: "Legal Employer Setup",
-        subtitle: "Enterprise structure",
-        xp: 20,
+        id: "l2",
+        title: "Legal Employer",
+        description: "Employment structure",
+        xp: 25,
         question: {
-          prompt: "A legal employer is needed for:",
-          options: ["Employment relationships", "Receiving inspection", "Asset depreciation"],
+          prompt: "Legal employer setup is required for:",
+          options: ["Employment relationships", "Invoice matching rules", "Supplier tax profile"],
           answer: 0,
         },
       },
       {
-        id: "hr-3",
-        title: "Document Records",
-        subtitle: "HR compliance docs",
-        xp: 20,
+        id: "l3",
+        title: "Benefits Eligibility",
+        description: "Plan access rules",
+        xp: 25,
         question: {
-          prompt: "Document records are used to:",
-          options: ["Track employee compliance", "Create GL journals", "Approve purchase orders"],
+          prompt: "Eligibility profiles are used to:",
+          options: ["Control plan enrollment access", "Run accounting close", "Dispatch purchase orders"],
           answer: 0,
         },
       },
     ],
   },
   {
-    id: "unit-2",
-    title: "Unit 2",
-    subtitle: "Benefits and payroll",
-    badge: "Build",
+    id: "operations",
+    title: "Section 1, Unit 2",
+    subtitle: "Payroll & Talent",
+    color: "section-secondary",
     lessons: [
       {
-        id: "ben-1",
-        title: "Eligibility Profiles",
-        subtitle: "Rules and criteria",
-        xp: 25,
-        question: {
-          prompt: "Eligibility profiles mostly control:",
-          options: ["Plan access", "Tax settlement", "Supplier onboarding"],
-          answer: 0,
-        },
-      },
-      {
-        id: "ben-2",
-        title: "Open Enrollment",
-        subtitle: "Election windows",
-        xp: 25,
-        question: {
-          prompt: "Enrollment changes are often triggered by:",
-          options: ["Life events", "AP invoices", "Inventory adjustments"],
-          answer: 0,
-        },
-      },
-      {
-        id: "pay-1",
+        id: "l4",
         title: "Payroll Inputs",
-        subtitle: "Time and entries",
+        description: "Time and element entries",
         xp: 30,
         question: {
-          prompt: "Payroll should start after:",
-          options: ["Approved time", "Bank reconciliation", "PO cancellation"],
+          prompt: "Payroll should begin after:",
+          options: ["Approved time collection", "AR invoices posted", "Supplier onboarding"],
           answer: 0,
         },
       },
-    ],
-  },
-  {
-    id: "unit-3",
-    title: "Unit 3",
-    subtitle: "Talent and performance",
-    badge: "Master",
-    lessons: [
       {
-        id: "tal-1",
-        title: "Goal Plans",
-        subtitle: "Alignment and ownership",
-        xp: 35,
+        id: "l5",
+        title: "Prepayments",
+        description: "Validate and transfer",
+        xp: 30,
         question: {
-          prompt: "A strong goal plan begins with:",
-          options: ["Clear goals and scope", "PO category mapping", "Journal imports"],
+          prompt: "Prepayment validation confirms:",
+          options: ["Pay results before transfer", "Asset depreciation", "PO dispatch status"],
           answer: 0,
         },
       },
       {
-        id: "tal-2",
+        id: "l6",
         title: "Performance Cycle",
-        subtitle: "Calibrate and close",
+        description: "Goal and review cadence",
         xp: 35,
         question: {
-          prompt: "Performance cycle quality improves with:",
-          options: ["Frequent manager check-ins", "Invoice automation", "Subledger close"],
+          prompt: "A healthy performance cycle requires:",
+          options: ["Regular manager and employee check-ins", "Supplier requalification", "Period close lock"],
           answer: 0,
         },
       },
@@ -121,14 +91,13 @@ const units = [
   },
 ];
 
-const orderedLessons = units.flatMap((unit, unitIndex) =>
-  unit.lessons.map((lesson, lessonIndex) => ({
+const lessons = sections.flatMap((section) =>
+  section.lessons.map((lesson) => ({
     ...lesson,
-    unitId: unit.id,
-    unitTitle: unit.title,
-    unitSubtitle: unit.subtitle,
-    unitBadge: unit.badge,
-    absoluteOrder: unitIndex * 100 + lessonIndex,
+    sectionId: section.id,
+    sectionTitle: section.title,
+    sectionSubtitle: section.subtitle,
+    sectionColor: section.color,
   })),
 );
 
@@ -137,11 +106,11 @@ const state = {
   hearts: 5,
   xp: 0,
   level: 1,
-  streak: 6,
-  selectedLessonId: orderedLessons[0].id,
-  completedLessonIds: [],
+  streak: 3,
+  completed: [],
   attempts: [],
-  lastResult: null,
+  selectedLessonId: lessons[0].id,
+  selectedAnswer: null,
 };
 
 const navEl = document.getElementById("nav");
@@ -152,63 +121,55 @@ const getPath = () => {
   return hash.startsWith("/") ? hash : `/${hash}`;
 };
 
-const go = (path) => {
+const navigate = (path) => {
   location.hash = path;
 };
 
-const getLessonById = (lessonId) => orderedLessons.find((lesson) => lesson.id === lessonId) ?? orderedLessons[0];
-const getLessonIndex = (lessonId) => orderedLessons.findIndex((lesson) => lesson.id === lessonId);
+const findLesson = (id) => lessons.find((lesson) => lesson.id === id) ?? lessons[0];
+const lessonIndex = (id) => lessons.findIndex((lesson) => lesson.id === id);
 
-const nextLevelXp = () => state.level * 120;
-const updateLevel = () => {
-  while (state.xp >= nextLevelXp()) {
+const xpTarget = () => state.level * 120;
+const addXp = (value) => {
+  state.xp += Math.max(0, value);
+  while (state.xp >= xpTarget()) {
     state.level += 1;
   }
 };
 
-const addXp = (xp) => {
-  state.xp += Math.max(0, xp);
-  updateLevel();
+const statusForLesson = (id) => {
+  if (state.completed.includes(id)) return "done";
+  const i = lessonIndex(id);
+  const unlocked = lessons.slice(0, i).every((lesson) => state.completed.includes(lesson.id));
+  return unlocked ? "current" : "locked";
 };
 
-const lessonStatus = (lessonId) => {
-  if (state.completedLessonIds.includes(lessonId)) return "done";
-  const lessonIndex = getLessonIndex(lessonId);
-  const allPreviousDone = orderedLessons
-    .slice(0, lessonIndex)
-    .every((lesson) => state.completedLessonIds.includes(lesson.id));
-  return allPreviousDone ? "current" : "locked";
+const quests = () => {
+  const completedLessons = state.completed.length;
+  return [
+    {
+      label: "Complete 2 lessons",
+      value: Math.min(completedLessons / 2, 1),
+    },
+    {
+      label: "Earn 100 XP",
+      value: Math.min(state.xp / 100, 1),
+    },
+    {
+      label: "Maintain 5 hearts",
+      value: state.hearts >= 5 ? 1 : state.hearts / 5,
+    },
+  ];
 };
 
-const firstCurrentLessonId = () => {
-  const current = orderedLessons.find((lesson) => lessonStatus(lesson.id) === "current");
-  return current?.id ?? orderedLessons[orderedLessons.length - 1].id;
-};
-
-const unitProgress = (unitId) => {
-  const lessons = orderedLessons.filter((lesson) => lesson.unitId === unitId);
-  const done = lessons.filter((lesson) => state.completedLessonIds.includes(lesson.id)).length;
-  return { done, total: lessons.length };
-};
-
-const buildReviewQueue = () => {
-  const queue = orderedLessons.map((lesson) => ({ lessonId: lesson.id, title: lesson.title, misses: 0 }));
+const reviewQueue = () => {
+  const queue = lessons.map((lesson) => ({ id: lesson.id, title: lesson.title, misses: 0 }));
   state.attempts.forEach((attempt) => {
     if (!attempt.correct) {
-      const item = queue.find((entry) => entry.lessonId === attempt.lessonId);
-      if (item) item.misses += 1;
+      const row = queue.find((item) => item.id === attempt.lessonId);
+      if (row) row.misses += 1;
     }
   });
   return queue.sort((a, b) => b.misses - a.misses);
-};
-
-const createQuestProgress = () => {
-  const completed = state.completedLessonIds.length;
-  return [
-    { label: "Complete 2 lessons", value: Math.min(Math.round((completed / 2) * 100), 100) },
-    { label: "Earn 100 XP", value: Math.min(Math.round((state.xp / 100) * 100), 100) },
-    { label: "Maintain 5 hearts", value: state.hearts === 5 ? 100 : Math.max(state.hearts * 20, 0) },
-  ];
 };
 
 const renderNav = () => {
@@ -217,238 +178,264 @@ const renderNav = () => {
     .map((route) => `<button class="nav-pill ${current === route.path ? "active" : ""}" data-route="${route.path}">${route.name}</button>`)
     .join("");
 
-  navEl.querySelectorAll("[data-route]").forEach((button) => {
-    button.addEventListener("click", () => go(button.dataset.route));
+  navEl.querySelectorAll("[data-route]").forEach((btn) => {
+    btn.addEventListener("click", () => navigate(btn.dataset.route));
   });
 };
 
-const shell = (title, subtitle, body) => {
-  appEl.innerHTML = `
-    <section class="hero">
-      <div>
-        <h2>${title}</h2>
-        <p>${subtitle}</p>
-      </div>
-      <div class="hero-stats">
-        <span>🔥 ${state.streak}</span>
-        <span>⚡ ${state.xp}</span>
+const renderPersistentProgress = () => {
+  const items = quests();
+  return `
+    <section class="panel progress-strip" aria-label="Daily progress">
+      <div class="vitals">
+        <span>⚡ ${state.xp} XP</span>
+        <span>🔥 ${state.streak} day streak</span>
         <span>❤️ ${state.hearts}</span>
       </div>
+      <div class="quest-mini-grid">
+        ${items
+          .map((item) => {
+            const done = item.value >= 1;
+            return `
+              <div class="quest-mini ${done ? "done" : ""}">
+                <small>${item.label}</small>
+                <div class="bar"><span style="width:${Math.round(item.value * 100)}%"></span></div>
+              </div>
+            `;
+          })
+          .join("")}
+      </div>
+    </section>
+  `;
+};
+
+const renderShell = (title, subtitle, primaryAction, body) => {
+  appEl.innerHTML = `
+    ${renderPersistentProgress()}
+    <section class="hero-card">
+      <h2>${title}</h2>
+      <p>${subtitle}</p>
+      ${primaryAction || ""}
     </section>
     ${body}
   `;
 };
 
 const renderHome = () => {
-  shell(
-    "HCM Path",
-    "Duolingo-inspired lesson path. Learn in order and unlock the next node.",
+  renderShell(
+    "Learning Flow",
+    "Clear paths. Helpful feedback. One next step.",
+    `<button id="openPath" class="btn primary">Continue</button>`,
     `
-      <section class="panel-grid">
-        <article class="panel stat-card"><span>Level</span><strong>${state.level}</strong></article>
-        <article class="panel stat-card"><span>Completed</span><strong>${state.completedLessonIds.length}/${orderedLessons.length}</strong></article>
-        <article class="panel stat-card"><span>Current Lesson</span><strong>${getLessonById(firstCurrentLessonId()).title}</strong></article>
+      <section class="stats-grid">
+        <article class="panel stat"><span>Level</span><strong>${state.level}</strong></article>
+        <article class="panel stat"><span>Completed</span><strong>${state.completed.length}/${lessons.length}</strong></article>
       </section>
-      <section class="panel home-action">
-        <h3>Continue your path</h3>
-        <p>Pick up where you left off in the learning tree.</p>
-        <button class="btn primary" id="homeContinue">Go to Learning Path</button>
+      <section class="panel">
+        <h3>Path order</h3>
+        <p>HCM Foundations → Payroll & Talent</p>
       </section>
     `,
   );
 
-  document.getElementById("homeContinue").addEventListener("click", () => go("/skills"));
+  document.getElementById("openPath").addEventListener("click", () => navigate("/skills"));
 };
 
-const renderUnitBlock = (unit) => {
-  const progress = unitProgress(unit.id);
-  const unitLessons = orderedLessons.filter((lesson) => lesson.unitId === unit.id);
+const renderSectionHeader = (section) => `
+  <div class="section-banner ${section.color}">
+    <div>
+      <span>${section.title.toUpperCase()}</span>
+      <h3>${section.subtitle}</h3>
+    </div>
+  </div>
+`;
 
+const renderNode = (lesson, index) => {
+  const side = index % 2 === 0 ? "left" : "right";
+  const status = statusForLesson(lesson.id);
+  const symbol = status === "done" ? "✓" : status === "current" ? "★" : "🔒";
   return `
-    <section class="unit-block">
-      <header class="unit-header">
-        <div>
-          <p>${unit.title}</p>
-          <h3>${unit.subtitle}</h3>
-        </div>
-        <span class="unit-badge">${unit.badge}</span>
-      </header>
-      <div class="path-rail">
-        ${unitLessons
-          .map((lesson, index) => {
-            const status = lessonStatus(lesson.id);
-            const direction = index % 2 === 0 ? "left" : "right";
-            return `
-              <div class="path-node-wrap ${direction}">
-                <button
-                  class="path-node ${status}"
-                  data-lesson-id="${lesson.id}"
-                  ${status === "locked" ? "disabled" : ""}
-                  title="${lesson.title}"
-                >
-                  <span class="node-inner">${status === "done" ? "✓" : "★"}</span>
-                </button>
-                <div class="node-caption ${status}">
-                  <strong>${lesson.title}</strong>
-                  <small>${lesson.subtitle}</small>
-                </div>
-              </div>
-            `;
-          })
-          .join("")}
+    <div class="path-row ${side}">
+      <div class="path-rail ${index === 0 ? "hidden" : ""}"></div>
+      <button class="lesson-node ${status}" data-lesson-id="${lesson.id}" ${status === "locked" ? "disabled" : ""} aria-label="${lesson.title}">${symbol}</button>
+      <div class="node-caption ${status}">
+        <strong>${lesson.title}</strong>
+        <small>${lesson.description}</small>
       </div>
-      <footer class="unit-progress">${progress.done}/${progress.total} complete</footer>
-    </section>
+      ${status === "current" ? '<div class="start-pill">START</div>' : ""}
+    </div>
   `;
 };
 
 const renderSkills = () => {
-  const quests = createQuestProgress();
-  shell(
-    "Learn",
-    "Section-based path with interactive lesson nodes.",
-    `
-      <section class="learn-layout">
-        <div class="learn-main">
-          ${units.map((unit) => renderUnitBlock(unit)).join("")}
-        </div>
-        <aside class="learn-side panel">
-          <h3>Daily Quests</h3>
-          <ul class="quest-list">
-            ${quests
-              .map(
-                (quest) => `
-                  <li>
-                    <div class="quest-head"><span>${quest.label}</span><strong>${quest.value}%</strong></div>
-                    <div class="quest-bar"><span style="width:${quest.value}%"></span></div>
-                  </li>
-                `,
-              )
-              .join("")}
-          </ul>
-        </aside>
-      </section>
-    `,
-  );
+  const sectionBlocks = sections
+    .map((section) => {
+      const sectionLessons = lessons.filter((lesson) => lesson.sectionId === section.id);
+      return `
+        ${renderSectionHeader(section)}
+        <section class="path-block">
+          ${sectionLessons.map((lesson, i) => renderNode(lesson, i)).join("")}
+        </section>
+      `;
+    })
+    .join("");
+
+  renderShell("Learn", "Only one node is active at a time.", null, sectionBlocks);
 
   appEl.querySelectorAll("[data-lesson-id]").forEach((button) => {
     button.addEventListener("click", () => {
       state.selectedLessonId = button.dataset.lessonId;
-      go("/practice");
+      state.selectedAnswer = null;
+      navigate("/practice");
     });
+  });
+};
+
+const spawnConfetti = () => {
+  const burst = document.createElement("div");
+  burst.className = "confetti-burst";
+  for (let i = 0; i < 16; i += 1) {
+    const dot = document.createElement("span");
+    dot.style.setProperty("--x", `${(Math.random() * 180 - 90).toFixed(0)}px`);
+    dot.style.setProperty("--y", `${(Math.random() * 120 - 60).toFixed(0)}px`);
+    dot.style.setProperty("--d", `${(Math.random() * 220 + 220).toFixed(0)}ms`);
+    burst.appendChild(dot);
+  }
+  const panel = document.getElementById("lessonPanel");
+  panel.appendChild(burst);
+  setTimeout(() => burst.remove(), 700);
+};
+
+const lockAnswers = (buttons, selectedIndex, answerIndex) => {
+  buttons.forEach((button) => {
+    const idx = Number(button.dataset.index);
+    button.disabled = true;
+    if (idx === answerIndex) {
+      button.classList.add("correct");
+    }
+    if (idx === selectedIndex && idx !== answerIndex) {
+      button.classList.add("wrong");
+    }
   });
 };
 
 const renderPractice = () => {
-  const lesson = getLessonById(state.selectedLessonId);
-  const status = lessonStatus(lesson.id);
+  const lesson = findLesson(state.selectedLessonId);
+  const lessonStatus = statusForLesson(lesson.id);
 
-  if (status === "locked") {
-    shell(
+  if (lessonStatus === "locked") {
+    renderShell(
       "Lesson locked",
-      "Complete previous lessons to unlock this node.",
-      `<section class="panel"><button class="btn primary" id="backLearn">Back to Learn</button></section>`,
+      "Finish the previous node first.",
+      `<button id="backPath" class="btn primary">Back</button>`,
+      `<section class="panel"><p>This lesson unlocks next.</p></section>`,
     );
-
-    document.getElementById("backLearn").addEventListener("click", () => go("/skills"));
+    document.getElementById("backPath").addEventListener("click", () => navigate("/skills"));
     return;
   }
 
-  shell(
+  renderShell(
     lesson.title,
-    `${lesson.unitTitle} • ${lesson.subtitle} • Reward ${lesson.xp} XP`,
+    `${lesson.sectionSubtitle} • +${lesson.xp} XP`,
+    null,
     `
-      <section class="panel practice-card ${state.lastResult === "correct" ? "celebrate" : ""}">
-        <p class="question">${lesson.question.prompt}</p>
-        <div class="answers">
-          ${lesson.question.options
-            .map((option, index) => `<button class="btn answer" data-index="${index}">${option}</button>`)
-            .join("")}
+      <section class="panel lesson-panel" id="lessonPanel">
+        <h3>${lesson.question.prompt}</h3>
+        <div class="answer-grid">
+          ${lesson.question.options.map((option, i) => `<button class="btn answer" data-index="${i}">${option}</button>`).join("")}
         </div>
-        <p id="practiceMessage" class="practice-message">Choose the best answer.</p>
-        <div class="practice-actions">
-          <button class="btn primary" id="toPath">Back to Path</button>
-        </div>
+        <p class="feedback" id="feedbackText">Choose one answer.</p>
+        <div class="continue-wrap" id="continueWrap"></div>
       </section>
     `,
   );
 
-  document.getElementById("toPath").addEventListener("click", () => go("/skills"));
+  const answerButtons = Array.from(appEl.querySelectorAll(".answer"));
+  answerButtons.forEach((button) => {
+    button.addEventListener(
+      "click",
+      () => {
+        const selectedIndex = Number(button.dataset.index);
+        const correct = selectedIndex === lesson.question.answer;
 
-  appEl.querySelectorAll(".answer").forEach((button) => {
-    button.addEventListener("click", () => {
-      const selected = Number(button.dataset.index);
-      const isCorrect = selected === lesson.question.answer;
-      state.attempts.push({ lessonId: lesson.id, correct: isCorrect, at: new Date().toISOString() });
+        state.attempts.push({ lessonId: lesson.id, correct, at: new Date().toISOString() });
+        lockAnswers(answerButtons, selectedIndex, lesson.question.answer);
 
-      const messageEl = document.getElementById("practiceMessage");
-      appEl.querySelectorAll(".answer").forEach((btn, index) => {
-        btn.disabled = true;
-        if (index === lesson.question.answer) {
-          btn.classList.add("is-correct");
+        const panel = document.getElementById("lessonPanel");
+        const feedback = document.getElementById("feedbackText");
+        const continueWrap = document.getElementById("continueWrap");
+
+        if (correct) {
+          panel.classList.add("celebrate");
+          spawnConfetti();
+          feedback.textContent = "Nice work!";
+          feedback.classList.add("ok");
+          if (!state.completed.includes(lesson.id)) {
+            state.completed.push(lesson.id);
+            addXp(lesson.xp);
+          }
+        } else {
+          panel.classList.add("error-flash");
+          panel.classList.add("shake");
+          feedback.textContent = "Not quite — try again.";
+          feedback.classList.add("bad");
+          state.hearts = Math.max(0, state.hearts - 1);
+          setTimeout(() => panel.classList.remove("error-flash"), 150);
         }
-        if (index === selected && !isCorrect) {
-          btn.classList.add("is-wrong");
-        }
-      });
 
-      if (isCorrect) {
-        state.lastResult = "correct";
-        if (!state.completedLessonIds.includes(lesson.id)) {
-          state.completedLessonIds.push(lesson.id);
-          addXp(lesson.xp);
-        }
-
-        messageEl.textContent = "Great job! Lesson complete. +XP";
-        messageEl.className = "practice-message ok";
-
-        const card = document.querySelector(".practice-card");
-        card.classList.add("celebrate");
-      } else {
-        state.lastResult = "wrong";
-        state.hearts = Math.max(0, state.hearts - 1);
-        messageEl.textContent = "Not quite. Review and try again on your path.";
-        messageEl.className = "practice-message bad";
-      }
-    });
+        continueWrap.innerHTML = `<button id="continueBtn" class="btn primary">Continue</button>`;
+        document.getElementById("continueBtn").addEventListener("click", () => navigate("/skills"));
+      },
+      { once: true },
+    );
   });
 };
 
 const renderReview = () => {
-  const queue = buildReviewQueue();
-  shell(
+  const queue = reviewQueue();
+  const daily = quests();
+  renderShell(
     "Review",
-    "Lessons with most misses bubble to the top.",
+    "Practice weak areas first.",
+    `<button id="reviewReward" class="btn primary">Finish Review</button>`,
     `
+      <section class="panel quest-panel">
+        <h3>Daily Quests</h3>
+        ${daily
+          .map((item) => {
+            const done = item.value >= 1;
+            return `<div class="quest-row ${done ? "done" : ""}"><span>${item.label}</span><div class="bar"><span style="width:${Math.round(item.value * 100)}%"></span></div></div>`;
+          })
+          .join("")}
+      </section>
       <section class="panel">
         <ul class="review-list">
-          ${queue.map((item) => `<li><span>${item.title}</span><strong>${item.misses} misses</strong></li>`).join("")}
+          ${queue.map((row) => `<li><span>${row.title}</span><span>misses ${row.misses}</span></li>`).join("")}
         </ul>
-        <button class="btn success" id="finishReview">Complete review session (+10 XP)</button>
       </section>
     `,
   );
 
-  document.getElementById("finishReview").addEventListener("click", () => {
+  document.getElementById("reviewReward").addEventListener("click", () => {
     addXp(10);
-    const button = document.getElementById("finishReview");
-    button.disabled = true;
+    const button = document.getElementById("reviewReward");
     button.textContent = "Completed";
+    button.disabled = true;
   });
 };
 
 const renderProfile = () => {
-  shell(
+  renderShell(
     "Profile",
-    "Set your learner profile for the journey.",
+    "Keep it simple and focused.",
+    `<button id="saveProfile" class="btn primary">Save</button>`,
     `
       <section class="panel">
-        <div class="form-row">
+        <div class="profile-form">
           <label>Name <input id="nameInput" value="${state.profile.name}" /></label>
           <label>Role <input id="roleInput" value="${state.profile.role}" /></label>
-          <button class="btn primary" id="saveProfile">Save</button>
         </div>
-        <p class="profile-note">${state.profile.name} • ${state.profile.role}</p>
+        <p>${state.profile.name} • ${state.profile.role}</p>
       </section>
     `,
   );
@@ -462,21 +449,17 @@ const renderProfile = () => {
 
 const renderRoute = () => {
   renderNav();
-  const path = getPath();
-
-  if (path === "/") return renderHome();
-  if (path === "/skills") return renderSkills();
-  if (path === "/practice") return renderPractice();
-  if (path === "/review") return renderReview();
-  if (path === "/profile") return renderProfile();
-
-  return shell("Not found", "Unknown route", `<section class="panel">${path}</section>`);
+  const route = getPath();
+  if (route === "/") return renderHome();
+  if (route === "/skills") return renderSkills();
+  if (route === "/practice") return renderPractice();
+  if (route === "/review") return renderReview();
+  if (route === "/profile") return renderProfile();
+  return renderShell("Not found", "Unknown route.", null, `<section class="panel"><code>${route}</code></section>`);
 };
 
 window.addEventListener("hashchange", renderRoute);
 window.addEventListener("load", () => {
-  if (!location.hash) {
-    go("/");
-  }
+  if (!location.hash) navigate("/");
   renderRoute();
 });
