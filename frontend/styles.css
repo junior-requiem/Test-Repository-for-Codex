@@ -483,6 +483,101 @@ input {
   margin-left: var(--space-xs);
 }
 
+
+
+body.focus-mode .nav,
+body.focus-mode .topbar {
+  display: none;
+}
+
+body.focus-mode .app {
+  width: min(900px, calc(100% - 32px));
+  margin-top: 18px;
+}
+
+.focused-practice {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-s);
+}
+
+.lesson-progress.compact {
+  margin-bottom: 0;
+}
+
+.lesson-kicker {
+  margin: 0 0 var(--space-s);
+  color: var(--text-secondary);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.completion-panel {
+  padding: clamp(20px, 4vw, 36px);
+}
+
+.completion-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  border: 2px solid #9fd5ff;
+  background: #fff;
+  color: var(--primary);
+  font-weight: 800;
+  padding: 6px 14px;
+}
+
+.completion-panel h2 {
+  margin: 12px 0 8px;
+  font-size: clamp(28px, 5vw, 40px);
+  color: var(--primary);
+}
+
+.completion-subtitle {
+  margin: 0 0 var(--space-m);
+  color: var(--text-secondary);
+}
+
+.reward-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--space-xs);
+}
+
+.reward-card {
+  display: grid;
+  gap: 8px;
+  background: #f4fbff;
+  border: 2px solid #cae9ff;
+  border-radius: var(--node-radius);
+  padding: var(--space-s);
+}
+
+.reward-card span {
+  font-size: 24px;
+}
+
+.lesson-recap {
+  margin-top: var(--space-s);
+  padding: var(--space-s);
+  background: #f4fbff;
+  border: 2px solid #cae9ff;
+  border-radius: var(--node-radius);
+}
+
+.lesson-recap h3 {
+  margin-top: 0;
+}
+
+.completion-cta {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-s);
+  margin-top: var(--space-s);
+}
+
 @media (max-width: 1024px) {
   .content-layout {
     grid-template-columns: 1fr;
