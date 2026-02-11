@@ -415,17 +415,25 @@ const renderProfile = () => {
     `
       <section class="panel">
         <div class="profile-form">
-          <label>Name <input id="nameInput" value="${state.profile.name}" /></label>
-          <label>Role <input id="roleInput" value="${state.profile.role}" /></label>
+          <label>Name <input id="nameInput" /></label>
+          <label>Role <input id="roleInput" /></label>
         </div>
-        <p>${state.profile.name} • ${state.profile.role}</p>
+        <p id="profileSummary"></p>
       </section>
     `,
   );
 
+  const nameInput = document.getElementById("nameInput");
+  const roleInput = document.getElementById("roleInput");
+  const profileSummary = document.getElementById("profileSummary");
+
+  nameInput.value = state.profile.name;
+  roleInput.value = state.profile.role;
+  profileSummary.textContent = `${state.profile.name} • ${state.profile.role}`;
+
   document.getElementById("saveProfile").addEventListener("click", () => {
-    state.profile.name = document.getElementById("nameInput").value.trim() || state.profile.name;
-    state.profile.role = document.getElementById("roleInput").value.trim() || state.profile.role;
+    state.profile.name = nameInput.value.trim() || state.profile.name;
+    state.profile.role = roleInput.value.trim() || state.profile.role;
     renderProfile();
   });
 };
