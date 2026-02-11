@@ -9,6 +9,7 @@ Interactive single-page app with hash routes, Apple-style typography/layout, and
 | Learn | `/skills` |
 | Practice | `/practice` |
 | Review | `/review` |
+| Developer Mode | `/developer` |
 | Profile | `/profile` |
 
 ## UX highlights
@@ -16,6 +17,7 @@ Interactive single-page app with hash routes, Apple-style typography/layout, and
 - Duolingo-inspired Module Mastery Map with zig-zag lesson nodes and one-next-node unlocking.
 - Right-rail progress node for Fusion Points, Implementation Streak, hearts, and quests so the lesson center area stays focused.
 - Green animated success feedback for correct answers, gentle shake/error flash for mistakes, and concise supportive microcopy.
+- Developer Mode no-code builder for creating custom units, lessons, and text-answer questions directly in the UI.
 
 ## Run locally
 From the repository root:
