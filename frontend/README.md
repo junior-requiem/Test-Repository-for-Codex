@@ -1,11 +1,38 @@
 # Frontend
 
+Interactive single-page app with hash routes and a Duolingo-inspired HCM learning path, zig-zag nodes, and animated green success states for correct answers.
+
 ## Routes
 | Screen | Route |
 | --- | --- |
 | Home | `/` |
-| SkillTree | `/skills` |
-| Lesson | `/lessons/:lessonId` |
-| Practice | `/lessons/:lessonId/practice` |
+| Path | `/skills` |
+| Practice | `/practice` |
 | Review | `/review` |
 | Profile | `/profile` |
+
+## Ordered HCM path
+1. Core HR
+2. Benefits
+3. Payroll
+4. Talent
+
+Each lesson node is locked until all previous lessons are completed.
+
+## Run locally
+From the repository root:
+
+```bash
+python3 -m http.server 4173 --directory frontend
+```
+
+Then open: `http://localhost:4173`.
+
+
+## Run from repository root
+
+```bash
+python3 -m http.server 4173
+```
+
+Then open: `http://localhost:4173` (auto-redirects to `frontend/index.html`).
