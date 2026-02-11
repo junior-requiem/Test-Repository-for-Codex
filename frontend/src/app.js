@@ -216,8 +216,8 @@ const renderHome = () => {
     `<button id="openPath" class="btn primary">Continue Learning</button>`,
     `
       <section class="stats-grid">
-        <article class="panel stat"><span>Level     </span><strong>${state.level}</strong></article>
-        <article class="panel stat"><span>Mastery    </span><strong>${masteryPercent()}%</strong></article>
+        <article class="panel stat"><span></span><strong>Level    ${state.level}</strong></article>
+        <article class="panel stat"><span></span><strong>Mastery   ${masteryPercent()}%</strong></article>
       </section>
       <section class="panel">
         <h3>Current track</h3>
