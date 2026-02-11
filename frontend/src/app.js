@@ -84,6 +84,7 @@ const lessons = sections.flatMap((section) =>
   section.lessons.map((lesson) => ({
     ...lesson,
     sectionId: section.id,
+    sectionTitle: section.title,
     sectionSubtitle: section.subtitle,
   })),
 );
@@ -114,9 +115,10 @@ const navigate = (path) => {
 const findLesson = (id) => lessons.find((lesson) => lesson.id === id) ?? lessons[0];
 const lessonIndex = (id) => lessons.findIndex((lesson) => lesson.id === id);
 
+const nextLevelTarget = () => state.level * 120;
 const addFusionPoints = (value) => {
   state.fusionPoints += Math.max(0, value);
-  while (state.fusionPoints >= state.level * 120) {
+  while (state.fusionPoints >= nextLevelTarget()) {
     state.level += 1;
   }
 };
@@ -127,6 +129,8 @@ const statusForLesson = (id) => {
   const unlocked = lessons.slice(0, idx).every((lesson) => state.completed.includes(lesson.id));
   return unlocked ? "current" : "locked";
 };
+
+const masteryPercent = () => Math.round((state.completed.length / lessons.length) * 100);
 
 const quests = () => {
   const completedLessons = state.completed.length;
@@ -160,42 +164,52 @@ const renderNav = () => {
 };
 
 const renderRightRail = () => {
-  const questCards = quests()
-    .map((item) => `<div class="rail-quest"><small>${item.label}</small><div class="bar"><span style="width:${Math.round(item.value * 100)}%"></span></div></div>`)
-    .join("");
-
+  const items = quests();
   return `
-    <aside class="right-rail" aria-label="Progress sidebar">
-      <section class="panel metrics-node">
-        <h4>Progress Node</h4>
-        <div class="metric-row">⚡ ${state.fusionPoints} Fusion Points</div>
-        <div class="metric-row">🔥 ${state.implementationStreak} day Implementation Streak</div>
-        <div class="metric-row">💗 ${state.hearts} hearts</div>
+    <aside class="right-rail" aria-label="progress sidebar">
+      <section class="panel rail-card">
+        <h3>Progress</h3>
+        <div class="metric-list">
+          <span>⚡ ${state.fusionPoints} Fusion Points</span>
+          <span>🔥 ${state.implementationStreak} day streak</span>
+          <span>💗 ${state.hearts} hearts</span>
+        </div>
       </section>
-      <section class="panel">
-        <h4>Daily Quests</h4>
-        ${questCards}
+      <section class="panel rail-card">
+        <h3>Quests</h3>
+        ${items
+          .map((item) => {
+            const done = item.value >= 1;
+            return `
+              <div class="quest-mini ${done ? "done" : ""}">
+                <small>${item.label}</small>
+                <div class="bar"><span style="width:${Math.round(item.value * 100)}%"></span></div>
+              </div>
+            `;
+          })
+          .join("")}
       </section>
     </aside>
   `;
 };
 
-const renderShell = (title, subtitle, primaryAction, mainBody) => {
+const renderShell = (title, subtitle, primaryAction, body) => {
   appEl.innerHTML = `
-    <section class="hero-card">
-      <h2>${title}</h2>
-      <p>${subtitle}</p>
-      ${primaryAction || ""}
-    </section>
-    <section class="screen-layout">
-      <main class="main-focus">${mainBody}</main>
+    <div class="content-layout">
+      <main class="main-column">
+        <section class="hero-card">
+          <h2>${title}</h2>
+          <p>${subtitle}</p>
+          ${primaryAction || ""}
+        </section>
+        ${body}
+      </main>
       ${renderRightRail()}
-    </section>
+    </div>
   `;
 };
 
 const renderHome = () => {
-  const mastery = Math.round((state.completed.length / lessons.length) * 100);
   renderShell(
     "Learning Flow",
     "Interactive onboarding, learning, and review experience.",
@@ -203,7 +217,7 @@ const renderHome = () => {
     `
       <section class="stats-grid">
         <article class="panel stat"><span>Level</span><strong>${state.level}</strong></article>
-        <article class="panel stat"><span>Mastery</span><strong>${mastery}%</strong></article>
+        <article class="panel stat"><span>Mastery</span><strong>${masteryPercent()}%</strong></article>
       </section>
       <section class="panel">
         <h3>Current track</h3>
@@ -217,8 +231,10 @@ const renderHome = () => {
 
 const renderSectionHeader = (section) => `
   <div class="section-banner ${section.color}">
-    <span>${section.title.toUpperCase()}</span>
-    <h3>${section.subtitle}</h3>
+    <div>
+      <span>${section.title.toUpperCase()}</span>
+      <h3>${section.subtitle}</h3>
+    </div>
   </div>
 `;
 
@@ -229,7 +245,7 @@ const renderNode = (lesson, index) => {
   return `
     <div class="path-row ${side}">
       <div class="path-rail ${index === 0 ? "hidden" : ""}"></div>
-      <button class="lesson-node ${status}" data-lesson-id="${lesson.id}" ${status === "locked" ? "disabled" : ""}>${symbol}</button>
+      <button class="lesson-node ${status}" data-lesson-id="${lesson.id}" ${status === "locked" ? "disabled" : ""} aria-label="${lesson.title}">${symbol}</button>
       <div class="node-caption ${status}">
         <strong>${lesson.title}</strong>
         <small>${lesson.description}</small>
@@ -243,7 +259,12 @@ const renderSkills = () => {
   const sectionBlocks = sections
     .map((section) => {
       const sectionLessons = lessons.filter((lesson) => lesson.sectionId === section.id);
-      return `${renderSectionHeader(section)}<section class="path-block">${sectionLessons.map((lesson, i) => renderNode(lesson, i)).join("")}</section>`;
+      return `
+        ${renderSectionHeader(section)}
+        <section class="path-block">
+          ${sectionLessons.map((lesson, i) => renderNode(lesson, i)).join("")}
+        </section>
+      `;
     })
     .join("");
 
@@ -272,11 +293,26 @@ const spawnConfetti = () => {
   setTimeout(() => burst.remove(), 700);
 };
 
+const lockAnswers = (buttons, selectedIndex, answerIndex) => {
+  buttons.forEach((button) => {
+    const idx = Number(button.dataset.index);
+    button.disabled = true;
+    if (idx === answerIndex) button.classList.add("correct");
+    if (idx === selectedIndex && idx !== answerIndex) button.classList.add("wrong");
+  });
+};
+
 const renderPractice = () => {
   const lesson = findLesson(state.selectedLessonId);
   const lessonStatus = statusForLesson(lesson.id);
+
   if (lessonStatus === "locked") {
-    renderShell("Lesson locked", "Complete the previous lesson first.", `<button id="backPath" class="btn primary">Back to path</button>`, `<section class="panel"><p>This lesson unlocks next.</p></section>`);
+    renderShell(
+      "Lesson locked",
+      "Complete the previous lesson first.",
+      `<button id="backPath" class="btn primary">Back to path</button>`,
+      `<section class="panel"><p>This lesson unlocks next.</p></section>`,
+    );
     document.getElementById("backPath").addEventListener("click", () => navigate("/skills"));
     return;
   }
@@ -312,12 +348,7 @@ const renderPractice = () => {
         const correct = selectedIndex === lesson.question.answer;
 
         state.attempts.push({ lessonId: lesson.id, correct, at: new Date().toISOString() });
-        answerButtons.forEach((option) => {
-          const idx = Number(option.dataset.index);
-          option.disabled = true;
-          if (idx === lesson.question.answer) option.classList.add("correct");
-          if (idx === selectedIndex && idx !== lesson.question.answer) option.classList.add("wrong");
-        });
+        lockAnswers(answerButtons, selectedIndex, lesson.question.answer);
 
         const panel = document.getElementById("lessonPanel");
         const feedback = document.getElementById("feedbackText");
@@ -384,17 +415,25 @@ const renderProfile = () => {
     `
       <section class="panel">
         <div class="profile-form">
-          <label>Name <input id="nameInput" value="${state.profile.name}" /></label>
-          <label>Role <input id="roleInput" value="${state.profile.role}" /></label>
+          <label>Name <input id="nameInput" /></label>
+          <label>Role <input id="roleInput" /></label>
         </div>
-        <p>${state.profile.name} • ${state.profile.role}</p>
+        <p id="profileSummary"></p>
       </section>
     `,
   );
 
+  const nameInput = document.getElementById("nameInput");
+  const roleInput = document.getElementById("roleInput");
+  const profileSummary = document.getElementById("profileSummary");
+
+  nameInput.value = state.profile.name;
+  roleInput.value = state.profile.role;
+  profileSummary.textContent = `${state.profile.name} • ${state.profile.role}`;
+
   document.getElementById("saveProfile").addEventListener("click", () => {
-    state.profile.name = document.getElementById("nameInput").value.trim() || state.profile.name;
-    state.profile.role = document.getElementById("roleInput").value.trim() || state.profile.role;
+    state.profile.name = nameInput.value.trim() || state.profile.name;
+    state.profile.role = roleInput.value.trim() || state.profile.role;
     renderProfile();
   });
 };
