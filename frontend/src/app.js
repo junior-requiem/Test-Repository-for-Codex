@@ -43,6 +43,13 @@ const sections = [
         question: {
           prompt: "Eligibility profiles are used to:",
           options: ["Control plan enrollment access", "Run accounting close", "Dispatch purchase orders"],
+        id: "ben-2",
+        title: "Open Enrollment",
+        subtitle: "Election windows",
+        xp: 25,
+        question: {
+          prompt: "Enrollment changes are commonly triggered by:",
+          options: ["Life events", "Bank reconciliation", "PO approval"],
           answer: 0,
         },
       },
@@ -180,7 +187,7 @@ const renderShell = (title, subtitle, body) => {
 };
 
 const renderHome = () => {
-  renderShell(
+renderShell(
     "Duo-inspired HCM Journey",
     "Follow the lesson path in order. Green checks unlock your next node.",
     `
@@ -246,120 +253,93 @@ const renderSkills = () => {
   appEl.querySelectorAll("[data-lesson-id]").forEach((button) => {
     button.addEventListener("click", () => {
       state.selectedLessonId = button.dataset.lessonId;
-      navigate("/practice");
+      go("/practice");
     });
   });
 };
 
-const setAnswerStyles = (buttons, selectedIndex, answerIndex) => {
-  buttons.forEach((button) => {
-    const idx = Number(button.dataset.index);
-    button.disabled = true;
-    if (idx === answerIndex) {
-      button.classList.add("correct");
-    }
-    if (idx === selectedIndex && idx !== answerIndex) {
-      button.classList.add("wrong");
-    }
-  });
-};
-
 const renderPractice = () => {
-  const lesson = findLesson(state.selectedLessonId);
-  const lessonStatus = statusForLesson(lesson.id);
+  const lesson = getLesson(state.selectedLessonId);
+  const status = lessonStatus(lesson.id);
 
-  if (lessonStatus === "locked") {
-    renderShell("Lesson locked", "Complete previous node first.", `<section class="panel"><button id="backPath" class="btn green">Back to Path</button></section>`);
-    document.getElementById("backPath").addEventListener("click", () => navigate("/skills"));
+  if (status === "locked") {
+    shell("Lesson locked", "Finish previous lessons first.", `<section class="panel"><button class="btn primary" id="backPath">Back to Path</button></section>`);
+    document.getElementById("backPath").addEventListener("click", () => go("/skills"));
     return;
   }
 
-  renderShell(
+  shell(
     lesson.title,
-    `${lesson.sectionSubtitle} • +${lesson.xp} XP`,
+    `${lesson.moduleName} • ${lesson.subtitle} • Reward: ${lesson.xp} XP`,
     `
-      <section class="panel lesson-panel" id="lessonPanel">
+      <section class="panel">
         <h3>${lesson.question.prompt}</h3>
-        <div class="answer-grid">
-          ${lesson.question.options.map((option, i) => `<button class="btn answer" data-index="${i}">${option}</button>`).join("")}
+        <div class="answers">
+          ${lesson.question.options
+            .map((option, index) => `<button class="btn secondary answer" data-index="${index}">${option}</button>`)
+            .join("")}
         </div>
-        <p class="feedback" id="feedbackText">Choose your answer.</p>
-        <div class="continue-wrap" id="continueWrap"></div>
+        <p id="practiceStatus" class="hint">Choose one answer.</p>
       </section>
     `,
   );
 
-  const answerButtons = Array.from(appEl.querySelectorAll(".answer"));
-  answerButtons.forEach((button) => {
+  appEl.querySelectorAll(".answer").forEach((button) => {
     button.addEventListener("click", () => {
-      const selectedIndex = Number(button.dataset.index);
-      const correct = selectedIndex === lesson.question.answer;
-      state.lastAnswerCorrect = correct;
+      const correct = Number(button.dataset.index) === lesson.question.answer;
       state.attempts.push({ lessonId: lesson.id, correct, at: new Date().toISOString() });
 
-      setAnswerStyles(answerButtons, selectedIndex, lesson.question.answer);
-
-      const panel = document.getElementById("lessonPanel");
-      const feedback = document.getElementById("feedbackText");
-      const continueWrap = document.getElementById("continueWrap");
-
       if (correct) {
-        panel.classList.add("celebrate");
-        feedback.textContent = "Great job! Correct answer. Node completed.";
-        feedback.classList.add("ok");
-
-        if (!state.completed.includes(lesson.id)) {
-          state.completed.push(lesson.id);
+        if (!state.completedLessonIds.includes(lesson.id)) {
+          state.completedLessonIds.push(lesson.id);
           addXp(lesson.xp);
         }
       } else {
-        panel.classList.add("shake");
-        feedback.textContent = "Not quite. Review and try another lesson.";
-        feedback.classList.add("bad");
         state.hearts = Math.max(0, state.hearts - 1);
       }
 
-      continueWrap.innerHTML = `<button id="continueBtn" class="btn green">Continue</button>`;
-      document.getElementById("continueBtn").addEventListener("click", () => navigate("/skills"));
-    }, { once: true });
+      document.getElementById("practiceStatus").textContent = correct
+        ? "Correct! Lesson complete. Return to Path for next node."
+        : "Incorrect. You lost one heart and this lesson is now review priority.";
+    });
   });
 };
 
 const renderReview = () => {
-  const queue = reviewQueue();
-  renderShell(
+  const queue = buildReviewQueue();
+  shell(
     "Review",
-    "Missed lessons bubble to the top.",
+    "Lessons with most misses appear first.",
     `
       <section class="panel">
         <ul class="review-list">
-          ${queue.map((row) => `<li><span>${row.title}</span><span>misses ${row.misses}</span></li>`).join("")}
+          ${queue.map((item) => `<li>${item.title}<span>misses: ${item.misses}</span></li>`).join("")}
         </ul>
-        <button id="reviewReward" class="btn green">Finish Review (+10 XP)</button>
+        <button class="btn success" id="reviewBoost">Complete review session (+10 XP)</button>
       </section>
     `,
   );
 
-  document.getElementById("reviewReward").addEventListener("click", () => {
+  document.getElementById("reviewBoost").addEventListener("click", () => {
     addXp(10);
-    const button = document.getElementById("reviewReward");
-    button.textContent = "Done";
+    const button = document.getElementById("reviewBoost");
     button.disabled = true;
+    button.textContent = "Session complete";
   });
 };
 
 const renderProfile = () => {
-  renderShell(
+  shell(
     "Profile",
-    "Edit your learner card.",
+    "Customize your learner identity.",
     `
       <section class="panel">
-        <div class="profile-form">
+        <div class="form-row">
           <label>Name <input id="nameInput" value="${state.profile.name}" /></label>
           <label>Role <input id="roleInput" value="${state.profile.role}" /></label>
-          <button id="saveProfile" class="btn green">Save</button>
+          <button class="btn primary" id="saveProfile">Save</button>
         </div>
-        <p>${state.profile.name} • ${state.profile.role}</p>
+        <p class="hint">${state.profile.name} • ${state.profile.role}</p>
       </section>
     `,
   );
@@ -373,17 +353,17 @@ const renderProfile = () => {
 
 const renderRoute = () => {
   renderNav();
-  const route = getPath();
-  if (route === "/") return renderHome();
-  if (route === "/skills") return renderSkills();
-  if (route === "/practice") return renderPractice();
-  if (route === "/review") return renderReview();
-  if (route === "/profile") return renderProfile();
-  return renderShell("Not found", "Unknown route", `<section class="panel"><code>${route}</code></section>`);
+  const path = getPath();
+  if (path === "/") return renderHome();
+  if (path === "/skills") return renderSkills();
+  if (path === "/practice") return renderPractice();
+  if (path === "/review") return renderReview();
+  if (path === "/profile") return renderProfile();
+  return shell("Not found", "Unknown route", `<section class="panel">${path}</section>`);
 };
 
 window.addEventListener("hashchange", renderRoute);
 window.addEventListener("load", () => {
-  if (!location.hash) navigate("/");
+  if (!location.hash) go("/");
   renderRoute();
 });

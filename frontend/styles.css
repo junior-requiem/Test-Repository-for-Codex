@@ -1,59 +1,61 @@
 :root {
-  --green: #58cc02;
-  --green-dark: #46a302;
-  --green-soft: #e8f9d8;
-  --blue: #1cb0f6;
-  --blue-dark: #0a8ecf;
-  --text: #3c3c3c;
-  --muted: #7a7a7a;
-  --bg: #f7f7f7;
-  --panel: #ffffff;
-  --rail: #d8d8d8;
+  --bg: #f5f7fb;
+  --surface: #ffffff;
+  --text: #1f2430;
+  --muted: #677289;
+  --blue: #5a8dff;
+  --purple: #8a66ff;
+  --green: #3ac97a;
+  --orange: #ffa52f;
+  --line: #dbe4ff;
+  --primary: #58cc02;
+  --primary-dark: #46a302;
+  --secondary: #edf3ff;
 }
 
 * { box-sizing: border-box; }
 
 body {
   margin: 0;
-  font-family: Nunito, "SF Pro Text", Inter, -apple-system, BlinkMacSystemFont, sans-serif;
-  background: var(--bg);
+  font-family: "SF Pro Text", Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: linear-gradient(180deg, #f8faff 0%, #eef3ff 100%);
   color: var(--text);
 }
 
 .topbar {
-  max-width: 980px;
-  margin: 0 auto;
-  padding: 1.2rem 1rem 0.7rem;
+  padding: 1.4rem 1rem 0.6rem;
+  text-align: center;
 }
 
 .topbar h1 {
   margin: 0;
-  font-size: 2rem;
-  font-weight: 900;
-  color: var(--green);
+  font-size: 1.9rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
 }
 
 .topbar p {
-  margin: 0.2rem 0 0;
+  margin: 0.35rem 0 0;
   color: var(--muted);
 }
 
 .nav {
-  max-width: 980px;
-  margin: 0 auto 0.8rem;
-  padding: 0 1rem;
+  width: min(920px, calc(100% - 1rem));
+  margin: 0 auto 0.9rem;
   display: flex;
-  gap: 0.5rem;
+  justify-content: center;
   flex-wrap: wrap;
+  gap: 0.45rem;
 }
 
 .nav-pill {
-  border: 2px solid #dcdcdc;
-  background: #fff;
-  color: #666;
+  border: 0;
   border-radius: 999px;
-  font-weight: 800;
-  padding: 0.45rem 0.9rem;
+  padding: 0.5rem 1rem;
+  background: #fff;
+  color: #334059;
+  box-shadow: 0 6px 16px rgba(50, 74, 140, 0.08);
+  font-weight: 700;
   cursor: pointer;
 }
 
