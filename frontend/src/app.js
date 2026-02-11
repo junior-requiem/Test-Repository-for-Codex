@@ -98,10 +98,12 @@ const state = {
   completed: ["l1", "l2", "l3"],
   attempts: [],
   selectedLessonId: "l4",
+  lastCompletion: null,
 };
 
 const navEl = document.getElementById("nav");
 const appEl = document.getElementById("app");
+const topbarEl = document.querySelector(".topbar");
 
 const getPath = () => {
   const hash = location.hash.replace(/^#/, "") || "/";
@@ -110,6 +112,14 @@ const getPath = () => {
 
 const navigate = (path) => {
   location.hash = path;
+};
+
+const isFocusedRoute = (route = getPath()) => route === "/practice" || route === "/lesson-complete";
+
+const syncRouteChrome = () => {
+  const focused = isFocusedRoute();
+  document.body.classList.toggle("focus-mode", focused);
+  if (topbarEl) topbarEl.hidden = focused;
 };
 
 const findLesson = (id) => lessons.find((lesson) => lesson.id === id) ?? lessons[0];
@@ -319,16 +329,14 @@ const renderPractice = () => {
 
   const progressValue = ((lessonIndex(lesson.id) + 1) / lessons.length) * 100;
 
-  renderShell(
-    "Practice",
-    `${lesson.sectionSubtitle} • +${lesson.fusionPoints} Fusion Points`,
-    null,
-    `
-      <section class="panel lesson-progress">
-        <div class="row-in-a-row">${state.implementationStreak} IN A ROW</div>
+  appEl.innerHTML = `
+    <div class="focused-practice" aria-label="lesson focus view">
+      <section class="panel lesson-progress compact">
+        <div class="row-in-a-row">${state.implementationStreak} IN A ROW • ${Math.round(progressValue)}% COURSE PROGRESS</div>
         <div class="bar"><span style="width:${Math.round(progressValue)}%"></span></div>
       </section>
       <section class="panel lesson-panel" id="lessonPanel">
+        <p class="lesson-kicker">${lesson.sectionSubtitle} • +${lesson.fusionPoints} Fusion Points</p>
         <h3>${lesson.question.prompt}</h3>
         <div class="answer-grid">
           ${lesson.question.options.map((option, i) => `<button class="btn answer" data-index="${i}">${option}</button>`).join("")}
@@ -336,8 +344,8 @@ const renderPractice = () => {
         <p class="feedback" id="feedbackText">Choose one answer.</p>
       </section>
       <section class="feedback-dock" id="continueWrap"></section>
-    `,
-  );
+    </div>
+  `;
 
   const answerButtons = Array.from(appEl.querySelectorAll(".answer"));
   answerButtons.forEach((button) => {
@@ -365,7 +373,7 @@ const renderPractice = () => {
             addFusionPoints(lesson.fusionPoints);
           }
           continueWrap.className = "feedback-dock success";
-          continueWrap.innerHTML = `<div><strong>Awesome!</strong><p>Module progress updated.</p></div><button id="continueBtn" class="btn success">Continue</button>`;
+          continueWrap.innerHTML = `<div><strong>Awesome!</strong><p>Module progress updated.</p></div><button id="continueBtn" class="btn success">See rewards</button>`;
         } else {
           panel.classList.add("error-flash", "shake");
           feedback.textContent = "Not quite — try again.";
@@ -377,11 +385,76 @@ const renderPractice = () => {
           continueWrap.innerHTML = `<div><strong>Almost.</strong><p>Let’s look at how Oracle processes this.</p></div><button id="continueBtn" class="btn primary">Try next</button>`;
         }
 
-        document.getElementById("continueBtn").addEventListener("click", () => navigate("/skills"));
+        document.getElementById("continueBtn").addEventListener("click", () => {
+          if (correct) {
+            state.lastCompletion = {
+              lessonId: lesson.id,
+              title: lesson.title,
+              sectionSubtitle: lesson.sectionSubtitle,
+              fusionPoints: lesson.fusionPoints,
+              streak: state.implementationStreak,
+              mastery: masteryPercent(),
+              learned: lesson.question.prompt,
+              correctAnswer: lesson.question.options[lesson.question.answer],
+            };
+            navigate("/lesson-complete");
+            return;
+          }
+          navigate("/skills");
+        });
       },
       { once: true },
     );
   });
+};
+
+const renderLessonComplete = () => {
+  const completion = state.lastCompletion;
+  if (!completion) {
+    navigate("/skills");
+    return;
+  }
+
+  appEl.innerHTML = `
+    <div class="focused-practice" aria-label="lesson completion view">
+      <section class="panel completion-panel" id="completionPanel">
+        <div class="completion-badge">🏆 Lesson Complete</div>
+        <h2>Great work, ${state.profile.name}!</h2>
+        <p class="completion-subtitle">You finished <strong>${completion.title}</strong> in ${completion.sectionSubtitle}.</p>
+
+        <div class="reward-grid">
+          <article class="reward-card"><span>⚡</span><strong>+${completion.fusionPoints} Fusion Points</strong></article>
+          <article class="reward-card"><span>🔥</span><strong>${completion.streak} day streak</strong></article>
+          <article class="reward-card"><span>🧠</span><strong>${completion.mastery}% mastery unlocked</strong></article>
+        </div>
+
+        <section class="lesson-recap">
+          <h3>What you just learned</h3>
+          <p><strong>Question:</strong> ${completion.learned}</p>
+          <p><strong>Key takeaway:</strong> ${completion.correctAnswer}</p>
+        </section>
+
+        <div class="completion-cta">
+          <p>Returning to your learning map for the next lesson...</p>
+          <button id="backToMap" class="btn primary">Continue to Learning Map</button>
+        </div>
+      </section>
+    </div>
+  `;
+
+  const panel = document.getElementById("completionPanel");
+  panel.classList.add("celebrate");
+  for (let i = 0; i < 2; i += 1) setTimeout(spawnConfetti, i * 220);
+
+  const goToMap = () => {
+    state.lastCompletion = null;
+    navigate("/skills");
+  };
+
+  document.getElementById("backToMap").addEventListener("click", goToMap);
+  setTimeout(() => {
+    if (getPath() === "/lesson-complete") goToMap();
+  }, 4500);
 };
 
 const renderReview = () => {
@@ -439,11 +512,13 @@ const renderProfile = () => {
 };
 
 const renderRoute = () => {
+  syncRouteChrome();
   renderNav();
   const route = getPath();
   if (route === "/") return renderHome();
   if (route === "/skills") return renderSkills();
   if (route === "/practice") return renderPractice();
+  if (route === "/lesson-complete") return renderLessonComplete();
   if (route === "/review") return renderReview();
   if (route === "/profile") return renderProfile();
   return renderShell("Not found", "Unknown route.", null, `<section class="panel"><code>${route}</code></section>`);
