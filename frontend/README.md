@@ -1,6 +1,6 @@
 # Frontend
 
-Interactive single-page app with hash routes, Apple-style typography/layout, and a Duolingo-inspired learning path.
+Interactive single-page app with hash routes, Apple-style typography/layout, and Duolingo-inspired engagement patterns tuned for Oracle Fusion training.
 
 ## Routes
 | Screen | Route |
@@ -12,10 +12,10 @@ Interactive single-page app with hash routes, Apple-style typography/layout, and
 | Profile | `/profile` |
 
 ## UX highlights
-- Apple-inspired visual hierarchy (SF/Apple system font stack, clean spacing, rounded cards).
-- Duolingo-inspired zig-zag lesson path with one-next-node unlocking.
-- Green animated success feedback on correct answers and lightweight confetti burst.
-- Persistent daily progress strip with XP, streak, hearts, and quest bars.
+- Apple-inspired visual hierarchy (SF/Apple system font stack, tokenized spacing, rounded cards).
+- Duolingo-inspired Module Mastery Map with zig-zag lesson nodes and one-next-node unlocking.
+- Fusion Points + Implementation Streak progress model with persistent daily quest visibility.
+- Green animated success feedback for correct answers, gentle shake/error flash for mistakes, and concise supportive microcopy.
 
 ## Run locally
 From the repository root:

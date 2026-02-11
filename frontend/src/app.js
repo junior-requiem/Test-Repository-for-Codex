@@ -10,14 +10,14 @@ const sections = [
   {
     id: "foundation",
     title: "Section 1, Unit 1",
-    subtitle: "HCM Foundations",
+    subtitle: "Core HR Foundations",
     color: "section-primary",
     lessons: [
       {
         id: "l1",
         title: "Worker Lifecycle",
         description: "Hire, transfer, terminate",
-        xp: 20,
+        fusionPoints: 20,
         question: {
           prompt: "Before terminating an employee, what should happen first?",
           options: ["Finalize pending payroll approvals", "Delete worker record", "Close supplier account"],
@@ -28,7 +28,7 @@ const sections = [
         id: "l2",
         title: "Legal Employer",
         description: "Employment structure",
-        xp: 25,
+        fusionPoints: 25,
         question: {
           prompt: "Legal employer setup is required for:",
           options: ["Employment relationships", "Invoice matching rules", "Supplier tax profile"],
@@ -39,7 +39,7 @@ const sections = [
         id: "l3",
         title: "Benefits Eligibility",
         description: "Plan access rules",
-        xp: 25,
+        fusionPoints: 25,
         question: {
           prompt: "Eligibility profiles are used to:",
           options: ["Control plan enrollment access", "Run accounting close", "Dispatch purchase orders"],
@@ -58,7 +58,7 @@ const sections = [
         id: "l4",
         title: "Payroll Inputs",
         description: "Time and element entries",
-        xp: 30,
+        fusionPoints: 30,
         question: {
           prompt: "Payroll should begin after:",
           options: ["Approved time collection", "AR invoices posted", "Supplier onboarding"],
@@ -69,7 +69,7 @@ const sections = [
         id: "l5",
         title: "Prepayments",
         description: "Validate and transfer",
-        xp: 30,
+        fusionPoints: 30,
         question: {
           prompt: "Prepayment validation confirms:",
           options: ["Pay results before transfer", "Asset depreciation", "PO dispatch status"],
@@ -80,7 +80,7 @@ const sections = [
         id: "l6",
         title: "Performance Cycle",
         description: "Goal and review cadence",
-        xp: 35,
+        fusionPoints: 35,
         question: {
           prompt: "A healthy performance cycle requires:",
           options: ["Regular manager and employee check-ins", "Supplier requalification", "Period close lock"],
@@ -104,13 +104,12 @@ const lessons = sections.flatMap((section) =>
 const state = {
   profile: { name: "Learner", role: "HCM Consultant" },
   hearts: 5,
-  xp: 0,
+  fusionPoints: 0,
   level: 1,
-  streak: 3,
+  implementationStreak: 3,
   completed: [],
   attempts: [],
   selectedLessonId: lessons[0].id,
-  selectedAnswer: null,
 };
 
 const navEl = document.getElementById("nav");
@@ -128,36 +127,29 @@ const navigate = (path) => {
 const findLesson = (id) => lessons.find((lesson) => lesson.id === id) ?? lessons[0];
 const lessonIndex = (id) => lessons.findIndex((lesson) => lesson.id === id);
 
-const xpTarget = () => state.level * 120;
-const addXp = (value) => {
-  state.xp += Math.max(0, value);
-  while (state.xp >= xpTarget()) {
+const nextLevelTarget = () => state.level * 120;
+const addFusionPoints = (value) => {
+  state.fusionPoints += Math.max(0, value);
+  while (state.fusionPoints >= nextLevelTarget()) {
     state.level += 1;
   }
 };
 
 const statusForLesson = (id) => {
   if (state.completed.includes(id)) return "done";
-  const i = lessonIndex(id);
-  const unlocked = lessons.slice(0, i).every((lesson) => state.completed.includes(lesson.id));
+  const idx = lessonIndex(id);
+  const unlocked = lessons.slice(0, idx).every((lesson) => state.completed.includes(lesson.id));
   return unlocked ? "current" : "locked";
 };
+
+const masteryPercent = () => Math.round((state.completed.length / lessons.length) * 100);
 
 const quests = () => {
   const completedLessons = state.completed.length;
   return [
-    {
-      label: "Complete 2 lessons",
-      value: Math.min(completedLessons / 2, 1),
-    },
-    {
-      label: "Earn 100 XP",
-      value: Math.min(state.xp / 100, 1),
-    },
-    {
-      label: "Maintain 5 hearts",
-      value: state.hearts >= 5 ? 1 : state.hearts / 5,
-    },
+    { label: "Complete 2 lessons", value: Math.min(completedLessons / 2, 1) },
+    { label: "Earn 100 Fusion Points", value: Math.min(state.fusionPoints / 100, 1) },
+    { label: "Keep 5 hearts", value: state.hearts >= 5 ? 1 : state.hearts / 5 },
   ];
 };
 
@@ -188,8 +180,8 @@ const renderPersistentProgress = () => {
   return `
     <section class="panel progress-strip" aria-label="Daily progress">
       <div class="vitals">
-        <span>⚡ ${state.xp} XP</span>
-        <span>🔥 ${state.streak} day streak</span>
+        <span>⚡ ${state.fusionPoints} Fusion Points</span>
+        <span>🔥 ${state.implementationStreak} day Implementation Streak</span>
         <span>❤️ ${state.hearts}</span>
       </div>
       <div class="quest-mini-grid">
@@ -223,17 +215,17 @@ const renderShell = (title, subtitle, primaryAction, body) => {
 
 const renderHome = () => {
   renderShell(
-    "Learning Flow",
-    "Clear paths. Helpful feedback. One next step.",
-    `<button id="openPath" class="btn primary">Continue</button>`,
+    "Module Mastery Map",
+    "Small wins make Oracle Fusion feel winnable.",
+    `<button id="openPath" class="btn primary">Continue Learning</button>`,
     `
       <section class="stats-grid">
         <article class="panel stat"><span>Level</span><strong>${state.level}</strong></article>
-        <article class="panel stat"><span>Completed</span><strong>${state.completed.length}/${lessons.length}</strong></article>
+        <article class="panel stat"><span>Mastery</span><strong>${masteryPercent()}%</strong></article>
       </section>
       <section class="panel">
-        <h3>Path order</h3>
-        <p>HCM Foundations → Payroll & Talent</p>
+        <h3>Current track</h3>
+        <p>Core HR Foundations → Payroll & Talent</p>
       </section>
     `,
   );
@@ -280,12 +272,11 @@ const renderSkills = () => {
     })
     .join("");
 
-  renderShell("Learn", "Only one node is active at a time.", null, sectionBlocks);
+  renderShell("Learn", "Only one next lesson is active.", null, sectionBlocks);
 
   appEl.querySelectorAll("[data-lesson-id]").forEach((button) => {
     button.addEventListener("click", () => {
       state.selectedLessonId = button.dataset.lessonId;
-      state.selectedAnswer = null;
       navigate("/practice");
     });
   });
@@ -310,12 +301,8 @@ const lockAnswers = (buttons, selectedIndex, answerIndex) => {
   buttons.forEach((button) => {
     const idx = Number(button.dataset.index);
     button.disabled = true;
-    if (idx === answerIndex) {
-      button.classList.add("correct");
-    }
-    if (idx === selectedIndex && idx !== answerIndex) {
-      button.classList.add("wrong");
-    }
+    if (idx === answerIndex) button.classList.add("correct");
+    if (idx === selectedIndex && idx !== answerIndex) button.classList.add("wrong");
   });
 };
 
@@ -326,27 +313,33 @@ const renderPractice = () => {
   if (lessonStatus === "locked") {
     renderShell(
       "Lesson locked",
-      "Finish the previous node first.",
-      `<button id="backPath" class="btn primary">Back</button>`,
+      "Complete the previous lesson first.",
+      `<button id="backPath" class="btn primary">Back to path</button>`,
       `<section class="panel"><p>This lesson unlocks next.</p></section>`,
     );
     document.getElementById("backPath").addEventListener("click", () => navigate("/skills"));
     return;
   }
 
+  const progressValue = ((lessonIndex(lesson.id) + 1) / lessons.length) * 100;
+
   renderShell(
     lesson.title,
-    `${lesson.sectionSubtitle} • +${lesson.xp} XP`,
+    `${lesson.sectionSubtitle} • +${lesson.fusionPoints} Fusion Points`,
     null,
     `
+      <section class="panel lesson-progress">
+        <div class="row-in-a-row">${state.implementationStreak} IN A ROW</div>
+        <div class="bar"><span style="width:${Math.round(progressValue)}%"></span></div>
+      </section>
       <section class="panel lesson-panel" id="lessonPanel">
         <h3>${lesson.question.prompt}</h3>
         <div class="answer-grid">
           ${lesson.question.options.map((option, i) => `<button class="btn answer" data-index="${i}">${option}</button>`).join("")}
         </div>
         <p class="feedback" id="feedbackText">Choose one answer.</p>
-        <div class="continue-wrap" id="continueWrap"></div>
       </section>
+      <section class="feedback-dock" id="continueWrap"></section>
     `,
   );
 
@@ -370,20 +363,24 @@ const renderPractice = () => {
           spawnConfetti();
           feedback.textContent = "Nice work!";
           feedback.classList.add("ok");
+          state.implementationStreak += 1;
           if (!state.completed.includes(lesson.id)) {
             state.completed.push(lesson.id);
-            addXp(lesson.xp);
+            addFusionPoints(lesson.fusionPoints);
           }
+          continueWrap.className = "feedback-dock success";
+          continueWrap.innerHTML = `<div><strong>Awesome!</strong><p>Module progress updated.</p></div><button id="continueBtn" class="btn success">Continue</button>`;
         } else {
-          panel.classList.add("error-flash");
-          panel.classList.add("shake");
+          panel.classList.add("error-flash", "shake");
           feedback.textContent = "Not quite — try again.";
           feedback.classList.add("bad");
           state.hearts = Math.max(0, state.hearts - 1);
+          state.implementationStreak = Math.max(0, state.implementationStreak - 1);
           setTimeout(() => panel.classList.remove("error-flash"), 150);
+          continueWrap.className = "feedback-dock error";
+          continueWrap.innerHTML = `<div><strong>Almost.</strong><p>Let’s look at how Oracle processes this.</p></div><button id="continueBtn" class="btn primary">Try next</button>`;
         }
 
-        continueWrap.innerHTML = `<button id="continueBtn" class="btn primary">Continue</button>`;
         document.getElementById("continueBtn").addEventListener("click", () => navigate("/skills"));
       },
       { once: true },
@@ -396,7 +393,7 @@ const renderReview = () => {
   const daily = quests();
   renderShell(
     "Review",
-    "Practice weak areas first.",
+    "Focus on weak spots first.",
     `<button id="reviewReward" class="btn primary">Finish Review</button>`,
     `
       <section class="panel quest-panel">
@@ -417,7 +414,7 @@ const renderReview = () => {
   );
 
   document.getElementById("reviewReward").addEventListener("click", () => {
-    addXp(10);
+    addFusionPoints(10);
     const button = document.getElementById("reviewReward");
     button.textContent = "Completed";
     button.disabled = true;
@@ -427,7 +424,7 @@ const renderReview = () => {
 const renderProfile = () => {
   renderShell(
     "Profile",
-    "Keep it simple and focused.",
+    "Keep your learning identity current.",
     `<button id="saveProfile" class="btn primary">Save</button>`,
     `
       <section class="panel">
