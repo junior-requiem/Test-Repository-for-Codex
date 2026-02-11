@@ -76,17 +76,6 @@ const sections = [
           answer: 0,
         },
       },
-      {
-        id: "l6",
-        title: "Performance Cycle",
-        description: "Goal and review cadence",
-        fusionPoints: 35,
-        question: {
-          prompt: "A healthy performance cycle requires:",
-          options: ["Regular manager and employee check-ins", "Supplier requalification", "Period close lock"],
-          answer: 0,
-        },
-      },
     ],
   },
 ];
@@ -95,21 +84,19 @@ const lessons = sections.flatMap((section) =>
   section.lessons.map((lesson) => ({
     ...lesson,
     sectionId: section.id,
-    sectionTitle: section.title,
     sectionSubtitle: section.subtitle,
-    sectionColor: section.color,
   })),
 );
 
 const state = {
   profile: { name: "Learner", role: "HCM Consultant" },
-  hearts: 5,
-  fusionPoints: 0,
-  level: 1,
-  implementationStreak: 3,
-  completed: [],
+  hearts: 4,
+  fusionPoints: 185,
+  level: 2,
+  implementationStreak: 9,
+  completed: ["l1", "l2", "l3"],
   attempts: [],
-  selectedLessonId: lessons[0].id,
+  selectedLessonId: "l4",
 };
 
 const navEl = document.getElementById("nav");
@@ -127,10 +114,9 @@ const navigate = (path) => {
 const findLesson = (id) => lessons.find((lesson) => lesson.id === id) ?? lessons[0];
 const lessonIndex = (id) => lessons.findIndex((lesson) => lesson.id === id);
 
-const nextLevelTarget = () => state.level * 120;
 const addFusionPoints = (value) => {
   state.fusionPoints += Math.max(0, value);
-  while (state.fusionPoints >= nextLevelTarget()) {
+  while (state.fusionPoints >= state.level * 120) {
     state.level += 1;
   }
 };
@@ -141,8 +127,6 @@ const statusForLesson = (id) => {
   const unlocked = lessons.slice(0, idx).every((lesson) => state.completed.includes(lesson.id));
   return unlocked ? "current" : "locked";
 };
-
-const masteryPercent = () => Math.round((state.completed.length / lessons.length) * 100);
 
 const quests = () => {
   const completedLessons = state.completed.length;
@@ -175,53 +159,51 @@ const renderNav = () => {
   });
 };
 
-const renderPersistentProgress = () => {
-  const items = quests();
+const renderRightRail = () => {
+  const questCards = quests()
+    .map((item) => `<div class="rail-quest"><small>${item.label}</small><div class="bar"><span style="width:${Math.round(item.value * 100)}%"></span></div></div>`)
+    .join("");
+
   return `
-    <section class="panel progress-strip" aria-label="Daily progress">
-      <div class="vitals">
-        <span>⚡ ${state.fusionPoints} Fusion Points</span>
-        <span>🔥 ${state.implementationStreak} day Implementation Streak</span>
-        <span>❤️ ${state.hearts}</span>
-      </div>
-      <div class="quest-mini-grid">
-        ${items
-          .map((item) => {
-            const done = item.value >= 1;
-            return `
-              <div class="quest-mini ${done ? "done" : ""}">
-                <small>${item.label}</small>
-                <div class="bar"><span style="width:${Math.round(item.value * 100)}%"></span></div>
-              </div>
-            `;
-          })
-          .join("")}
-      </div>
-    </section>
+    <aside class="right-rail" aria-label="Progress sidebar">
+      <section class="panel metrics-node">
+        <h4>Progress Node</h4>
+        <div class="metric-row">⚡ ${state.fusionPoints} Fusion Points</div>
+        <div class="metric-row">🔥 ${state.implementationStreak} day Implementation Streak</div>
+        <div class="metric-row">💗 ${state.hearts} hearts</div>
+      </section>
+      <section class="panel">
+        <h4>Daily Quests</h4>
+        ${questCards}
+      </section>
+    </aside>
   `;
 };
 
-const renderShell = (title, subtitle, primaryAction, body) => {
+const renderShell = (title, subtitle, primaryAction, mainBody) => {
   appEl.innerHTML = `
-    ${renderPersistentProgress()}
     <section class="hero-card">
       <h2>${title}</h2>
       <p>${subtitle}</p>
       ${primaryAction || ""}
     </section>
-    ${body}
+    <section class="screen-layout">
+      <main class="main-focus">${mainBody}</main>
+      ${renderRightRail()}
+    </section>
   `;
 };
 
 const renderHome = () => {
+  const mastery = Math.round((state.completed.length / lessons.length) * 100);
   renderShell(
-    "Module Mastery Map",
-    "Small wins make Oracle Fusion feel winnable.",
+    "Learning Flow",
+    "Interactive onboarding, learning, and review experience.",
     `<button id="openPath" class="btn primary">Continue Learning</button>`,
     `
       <section class="stats-grid">
         <article class="panel stat"><span>Level</span><strong>${state.level}</strong></article>
-        <article class="panel stat"><span>Mastery</span><strong>${masteryPercent()}%</strong></article>
+        <article class="panel stat"><span>Mastery</span><strong>${mastery}%</strong></article>
       </section>
       <section class="panel">
         <h3>Current track</h3>
@@ -235,10 +217,8 @@ const renderHome = () => {
 
 const renderSectionHeader = (section) => `
   <div class="section-banner ${section.color}">
-    <div>
-      <span>${section.title.toUpperCase()}</span>
-      <h3>${section.subtitle}</h3>
-    </div>
+    <span>${section.title.toUpperCase()}</span>
+    <h3>${section.subtitle}</h3>
   </div>
 `;
 
@@ -249,7 +229,7 @@ const renderNode = (lesson, index) => {
   return `
     <div class="path-row ${side}">
       <div class="path-rail ${index === 0 ? "hidden" : ""}"></div>
-      <button class="lesson-node ${status}" data-lesson-id="${lesson.id}" ${status === "locked" ? "disabled" : ""} aria-label="${lesson.title}">${symbol}</button>
+      <button class="lesson-node ${status}" data-lesson-id="${lesson.id}" ${status === "locked" ? "disabled" : ""}>${symbol}</button>
       <div class="node-caption ${status}">
         <strong>${lesson.title}</strong>
         <small>${lesson.description}</small>
@@ -263,12 +243,7 @@ const renderSkills = () => {
   const sectionBlocks = sections
     .map((section) => {
       const sectionLessons = lessons.filter((lesson) => lesson.sectionId === section.id);
-      return `
-        ${renderSectionHeader(section)}
-        <section class="path-block">
-          ${sectionLessons.map((lesson, i) => renderNode(lesson, i)).join("")}
-        </section>
-      `;
+      return `${renderSectionHeader(section)}<section class="path-block">${sectionLessons.map((lesson, i) => renderNode(lesson, i)).join("")}</section>`;
     })
     .join("");
 
@@ -297,26 +272,11 @@ const spawnConfetti = () => {
   setTimeout(() => burst.remove(), 700);
 };
 
-const lockAnswers = (buttons, selectedIndex, answerIndex) => {
-  buttons.forEach((button) => {
-    const idx = Number(button.dataset.index);
-    button.disabled = true;
-    if (idx === answerIndex) button.classList.add("correct");
-    if (idx === selectedIndex && idx !== answerIndex) button.classList.add("wrong");
-  });
-};
-
 const renderPractice = () => {
   const lesson = findLesson(state.selectedLessonId);
   const lessonStatus = statusForLesson(lesson.id);
-
   if (lessonStatus === "locked") {
-    renderShell(
-      "Lesson locked",
-      "Complete the previous lesson first.",
-      `<button id="backPath" class="btn primary">Back to path</button>`,
-      `<section class="panel"><p>This lesson unlocks next.</p></section>`,
-    );
+    renderShell("Lesson locked", "Complete the previous lesson first.", `<button id="backPath" class="btn primary">Back to path</button>`, `<section class="panel"><p>This lesson unlocks next.</p></section>`);
     document.getElementById("backPath").addEventListener("click", () => navigate("/skills"));
     return;
   }
@@ -324,7 +284,7 @@ const renderPractice = () => {
   const progressValue = ((lessonIndex(lesson.id) + 1) / lessons.length) * 100;
 
   renderShell(
-    lesson.title,
+    "Practice",
     `${lesson.sectionSubtitle} • +${lesson.fusionPoints} Fusion Points`,
     null,
     `
@@ -352,7 +312,12 @@ const renderPractice = () => {
         const correct = selectedIndex === lesson.question.answer;
 
         state.attempts.push({ lessonId: lesson.id, correct, at: new Date().toISOString() });
-        lockAnswers(answerButtons, selectedIndex, lesson.question.answer);
+        answerButtons.forEach((option) => {
+          const idx = Number(option.dataset.index);
+          option.disabled = true;
+          if (idx === lesson.question.answer) option.classList.add("correct");
+          if (idx === selectedIndex && idx !== lesson.question.answer) option.classList.add("wrong");
+        });
 
         const panel = document.getElementById("lessonPanel");
         const feedback = document.getElementById("feedbackText");
@@ -390,21 +355,11 @@ const renderPractice = () => {
 
 const renderReview = () => {
   const queue = reviewQueue();
-  const daily = quests();
   renderShell(
     "Review",
     "Focus on weak spots first.",
     `<button id="reviewReward" class="btn primary">Finish Review</button>`,
     `
-      <section class="panel quest-panel">
-        <h3>Daily Quests</h3>
-        ${daily
-          .map((item) => {
-            const done = item.value >= 1;
-            return `<div class="quest-row ${done ? "done" : ""}"><span>${item.label}</span><div class="bar"><span style="width:${Math.round(item.value * 100)}%"></span></div></div>`;
-          })
-          .join("")}
-      </section>
       <section class="panel">
         <ul class="review-list">
           ${queue.map((row) => `<li><span>${row.title}</span><span>misses ${row.misses}</span></li>`).join("")}

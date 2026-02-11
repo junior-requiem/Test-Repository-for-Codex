@@ -14,7 +14,7 @@ Interactive single-page app with hash routes, Apple-style typography/layout, and
 ## UX highlights
 - Apple-inspired visual hierarchy (SF/Apple system font stack, tokenized spacing, rounded cards).
 - Duolingo-inspired Module Mastery Map with zig-zag lesson nodes and one-next-node unlocking.
-- Fusion Points + Implementation Streak progress model with persistent daily quest visibility.
+- Right-rail progress node for Fusion Points + Implementation Streak + quest bars to keep center content focused.
 - Green animated success feedback for correct answers, gentle shake/error flash for mistakes, and concise supportive microcopy.
 
 ## Run locally
