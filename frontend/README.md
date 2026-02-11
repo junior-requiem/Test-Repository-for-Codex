@@ -1,5 +1,6 @@
 # Frontend
 
+Interactive single-page app with hash routes and a Duolingo-inspired HCM learning path, zig-zag nodes, and animated green success states for correct answers.
 Interactive single-page app with hash routes and a Duolingo-style HCM learning path.
 
 ## Routes
