@@ -6,43 +6,53 @@ const routes = [
   { name: "Profile", path: "/profile" },
 ];
 
-const sections = [
+const modules = [
   {
-    id: "foundation",
-    title: "Section 1, Unit 1",
-    subtitle: "HCM Foundations",
-    color: "section-green",
+    id: "core-hr",
+    name: "Core HR",
+    color: "blue",
     lessons: [
       {
-        id: "l1",
+        id: "hr-1",
         title: "Worker Lifecycle",
-        description: "Hire, transfer, terminate",
+        subtitle: "Hire, transfer, terminate",
         xp: 20,
         question: {
-          prompt: "Before terminating an employee, what should be done first?",
-          options: ["Finalize pending payroll approvals", "Delete worker record", "Close supplier account"],
+          prompt: "Before terminating an employee, you should:",
+          options: ["Finalize payroll approvals", "Delete worker record", "Close pay period"],
           answer: 0,
         },
       },
       {
-        id: "l2",
-        title: "Legal Employer",
-        description: "Employment structures",
+        id: "hr-2",
+        title: "Legal Employer Setup",
+        subtitle: "Enterprise structure",
+        xp: 20,
+        question: {
+          prompt: "A legal employer is required for:",
+          options: ["Employment relationships", "Supplier invoices", "PO dispatch"],
+          answer: 0,
+        },
+      },
+    ],
+  },
+  {
+    id: "benefits",
+    name: "Benefits",
+    color: "purple",
+    lessons: [
+      {
+        id: "ben-1",
+        title: "Eligibility Profiles",
+        subtitle: "Rules and criteria",
         xp: 25,
         question: {
-          prompt: "Legal employer setup is needed to establish:",
-          options: ["Employment relationships", "Invoice matching rules", "Supplier tax profile"],
+          prompt: "Eligibility profiles are mainly used to:",
+          options: ["Control plan access", "Run payroll", "Close accounting periods"],
           answer: 0,
         },
       },
       {
-        id: "l3",
-        title: "Benefits Eligibility",
-        description: "Plan access rules",
-        xp: 25,
-        question: {
-          prompt: "Eligibility profiles are used to:",
-          options: ["Control plan enrollment access", "Run accounting close", "Dispatch purchase orders"],
         id: "ben-2",
         title: "Open Enrollment",
         subtitle: "Election windows",
@@ -56,41 +66,58 @@ const sections = [
     ],
   },
   {
-    id: "operations",
-    title: "Section 1, Unit 2",
-    subtitle: "Payroll & Talent",
-    color: "section-blue",
+    id: "payroll",
+    name: "Payroll",
+    color: "green",
     lessons: [
       {
-        id: "l4",
+        id: "pay-1",
         title: "Payroll Inputs",
-        description: "Time and element entries",
+        subtitle: "Time and element entries",
         xp: 30,
         question: {
-          prompt: "Payroll should begin after:",
-          options: ["Approved time collection", "AR invoices posted", "Supplier onboarding"],
+          prompt: "Payroll run should start after:",
+          options: ["Approved time", "Posted AR invoices", "Supplier onboarding"],
           answer: 0,
         },
       },
       {
-        id: "l5",
+        id: "pay-2",
         title: "Prepayments",
-        description: "Validate and transfer",
+        subtitle: "Validation and balancing",
         xp: 30,
         question: {
-          prompt: "Prepayment validation confirms:",
-          options: ["Pay results before transfer", "Asset depreciation", "PO dispatch status"],
+          prompt: "Prepayment validation checks:",
+          options: ["Pay results before transfer", "Item costs", "PO match exceptions"],
           answer: 0,
         },
       },
+    ],
+  },
+  {
+    id: "talent",
+    name: "Talent",
+    color: "orange",
+    lessons: [
       {
-        id: "l6",
-        title: "Performance Cycle",
-        description: "Goal and review cadence",
+        id: "tal-1",
+        title: "Goal Plans",
+        subtitle: "Structure and alignment",
         xp: 35,
         question: {
-          prompt: "A healthy performance cycle requires:",
-          options: ["Regular manager and employee check-ins", "Supplier requalification", "Period close lock"],
+          prompt: "A strong goal plan starts with:",
+          options: ["Clear goals and eligibility", "Supplier categories", "Close checklist"],
+          answer: 0,
+        },
+      },
+      {
+        id: "tal-2",
+        title: "Performance Cycle",
+        subtitle: "Calibration and completion",
+        xp: 35,
+        question: {
+          prompt: "Performance cycle success depends on:",
+          options: ["Timely manager/employee check-ins", "Invoice matching", "Tax setup"],
           answer: 0,
         },
       },
@@ -98,14 +125,13 @@ const sections = [
   },
 ];
 
-const lessons = sections.flatMap((section, sectionIndex) =>
-  section.lessons.map((lesson, indexInSection) => ({
+const orderedLessons = modules.flatMap((module, moduleIndex) =>
+  module.lessons.map((lesson, lessonIndex) => ({
     ...lesson,
-    sectionId: section.id,
-    sectionTitle: section.title,
-    sectionSubtitle: section.subtitle,
-    sectionColor: section.color,
-    order: sectionIndex * 100 + indexInSection,
+    moduleId: module.id,
+    moduleName: module.name,
+    moduleColor: module.color,
+    sequence: moduleIndex * 100 + lessonIndex,
   })),
 );
 
@@ -114,10 +140,10 @@ const state = {
   hearts: 5,
   xp: 0,
   level: 1,
-  completed: [],
+  streak: 4,
+  completedLessonIds: [],
   attempts: [],
-  selectedLessonId: lessons[0].id,
-  lastAnswerCorrect: null,
+  selectedLessonId: orderedLessons[0].id,
 };
 
 const navEl = document.getElementById("nav");
@@ -128,38 +154,46 @@ const getPath = () => {
   return hash.startsWith("/") ? hash : `/${hash}`;
 };
 
-const navigate = (path) => {
+const go = (path) => {
   location.hash = path;
 };
 
-const findLesson = (id) => lessons.find((lesson) => lesson.id === id) ?? lessons[0];
-const lessonIndex = (id) => lessons.findIndex((lesson) => lesson.id === id);
+const getLessonIndex = (lessonId) => orderedLessons.findIndex((lesson) => lesson.id === lessonId);
+const getLesson = (lessonId) => orderedLessons.find((lesson) => lesson.id === lessonId) ?? orderedLessons[0];
 
-const xpTarget = () => state.level * 120;
+const nextThreshold = () => state.level * 120;
 const updateLevel = () => {
-  while (state.xp >= xpTarget()) {
+  while (state.xp >= nextThreshold()) {
     state.level += 1;
   }
 };
 
-const addXp = (value) => {
-  state.xp += Math.max(0, value);
+const addXp = (amount) => {
+  state.xp += Math.max(0, amount);
   updateLevel();
 };
 
-const statusForLesson = (id) => {
-  if (state.completed.includes(id)) return "done";
-  const i = lessonIndex(id);
-  const unlocked = lessons.slice(0, i).every((lesson) => state.completed.includes(lesson.id));
-  return unlocked ? "current" : "locked";
+const lessonStatus = (lessonId) => {
+  if (state.completedLessonIds.includes(lessonId)) return "done";
+  const index = getLessonIndex(lessonId);
+  const allPreviousDone = orderedLessons
+    .slice(0, index)
+    .every((lesson) => state.completedLessonIds.includes(lesson.id));
+  return allPreviousDone ? "current" : "locked";
 };
 
-const reviewQueue = () => {
-  const queue = lessons.map((lesson) => ({ title: lesson.title, misses: 0 }));
+const calculateModuleProgress = (moduleId) => {
+  const moduleLessons = orderedLessons.filter((lesson) => lesson.moduleId === moduleId);
+  const done = moduleLessons.filter((lesson) => state.completedLessonIds.includes(lesson.id)).length;
+  return { done, total: moduleLessons.length };
+};
+
+const buildReviewQueue = () => {
+  const queue = orderedLessons.map((lesson) => ({ lessonId: lesson.id, title: lesson.title, misses: 0 }));
   state.attempts.forEach((attempt) => {
     if (!attempt.correct) {
-      const row = queue.find((item) => item.title === findLesson(attempt.lessonId).title);
-      if (row) row.misses += 1;
+      const item = queue.find((entry) => entry.lessonId === attempt.lessonId);
+      if (item) item.misses += 1;
     }
   });
   return queue.sort((a, b) => b.misses - a.misses);
@@ -171,14 +205,14 @@ const renderNav = () => {
     .map((route) => `<button class="nav-pill ${current === route.path ? "active" : ""}" data-route="${route.path}">${route.name}</button>`)
     .join("");
 
-  navEl.querySelectorAll("[data-route]").forEach((btn) => {
-    btn.addEventListener("click", () => navigate(btn.dataset.route));
+  navEl.querySelectorAll("[data-route]").forEach((button) => {
+    button.addEventListener("click", () => go(button.dataset.route));
   });
 };
 
-const renderShell = (title, subtitle, body) => {
+const shell = (title, subtitle, body) => {
   appEl.innerHTML = `
-    <section class="hero-card">
+    <section class="hero">
       <h2>${title}</h2>
       <p>${subtitle}</p>
     </section>
@@ -187,68 +221,70 @@ const renderShell = (title, subtitle, body) => {
 };
 
 const renderHome = () => {
-renderShell(
-    "Duo-inspired HCM Journey",
-    "Follow the lesson path in order. Green checks unlock your next node.",
+  const totalLessons = orderedLessons.length;
+  shell(
+    "HCM Quest",
+    "Duolingo-style path progression. Complete lessons in order to unlock the next node.",
     `
-      <section class="stats-grid">
-        <article class="panel stat"><span>XP</span><strong>${state.xp}</strong></article>
-        <article class="panel stat"><span>Level</span><strong>${state.level}</strong></article>
-        <article class="panel stat"><span>Hearts</span><strong>${"❤️".repeat(state.hearts)}</strong></article>
-        <article class="panel stat"><span>Completed</span><strong>${state.completed.length}/${lessons.length}</strong></article>
+      <section class="stat-row">
+        <article class="stat-card"><span>XP</span><strong>${state.xp}</strong></article>
+        <article class="stat-card"><span>Level</span><strong>${state.level}</strong></article>
+        <article class="stat-card"><span>Hearts</span><strong>${"❤️".repeat(state.hearts)}</strong></article>
+        <article class="stat-card"><span>Completed</span><strong>${state.completedLessonIds.length}/${totalLessons}</strong></article>
       </section>
       <section class="panel">
-        <h3>Section order</h3>
-        <p>HCM Foundations → Payroll & Talent</p>
-        <button id="openPath" class="btn green">Start Learning Path</button>
+        <h3>Learning order</h3>
+        <p>Core HR → Benefits → Payroll → Talent</p>
+        <button class="btn primary" id="startPath">Open Path</button>
       </section>
     `,
   );
 
-  document.getElementById("openPath").addEventListener("click", () => navigate("/skills"));
+  document.getElementById("startPath").addEventListener("click", () => go("/skills"));
 };
 
-const renderSectionHeader = (section) => `
-  <div class="section-banner ${section.color}">
-    <div>
-      <span>${section.title.toUpperCase()}</span>
-      <h3>${section.subtitle}</h3>
-    </div>
-    <button class="btn ghost">CONTINUE</button>
-  </div>
-`;
-
-const renderNode = (lesson, index) => {
-  const side = index % 2 === 0 ? "left" : "right";
-  const status = statusForLesson(lesson.id);
-  const symbol = status === "done" ? "✓" : status === "current" ? "★" : "🔒";
+const createPathNode = (lesson, index) => {
+  const status = lessonStatus(lesson.id);
+  const offsetClass = index % 2 === 0 ? "left" : "right";
   return `
-    <div class="path-row ${side}">
-      <div class="path-rail ${index === 0 ? "hidden" : ""}"></div>
-      <button class="lesson-node ${status}" data-lesson-id="${lesson.id}" ${status === "locked" ? "disabled" : ""}>${symbol}</button>
-      <div class="node-caption ${status}">
+    <div class="path-step ${offsetClass}">
+      <div class="path-line"></div>
+      <button
+        class="lesson-node ${status} ${lesson.moduleColor}"
+        data-lesson-id="${lesson.id}"
+        ${status === "locked" ? "disabled" : ""}
+        title="${lesson.title}"
+      >
+        ${status === "done" ? "✓" : status === "current" ? "★" : "🔒"}
+      </button>
+      <div class="path-label ${status}">
         <strong>${lesson.title}</strong>
-        <small>${lesson.description}</small>
+        <small>${lesson.moduleName}</small>
       </div>
-      ${status === "current" ? '<div class="start-pill">START</div>' : ""}
     </div>
   `;
 };
 
 const renderSkills = () => {
-  const sectionBlocks = sections
-    .map((section) => {
-      const sectionLessons = lessons.filter((lesson) => lesson.sectionId === section.id);
-      return `
-        ${renderSectionHeader(section)}
-        <section class="path-block">
-          ${sectionLessons.map((lesson, i) => renderNode(lesson, i)).join("")}
-        </section>
-      `;
-    })
-    .join("");
-
-  renderShell("Path", "Exactly one next lesson is active, just like Duolingo units.", sectionBlocks);
+  shell(
+    "Path",
+    "Follow the exact sequence. Only the next lesson node is playable.",
+    `
+      <section class="panel">
+        <div class="module-chips">
+          ${modules
+            .map((module) => {
+              const progress = calculateModuleProgress(module.id);
+              return `<span class="chip">${module.name}: ${progress.done}/${progress.total}</span>`;
+            })
+            .join("")}
+        </div>
+      </section>
+      <section class="duo-path">
+        ${orderedLessons.map((lesson, index) => createPathNode(lesson, index)).join("")}
+      </section>
+    `,
+  );
 
   appEl.querySelectorAll("[data-lesson-id]").forEach((button) => {
     button.addEventListener("click", () => {
