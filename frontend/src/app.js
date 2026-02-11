@@ -3,10 +3,13 @@ const routes = [
   { name: "Learn", path: "/skills" },
   { name: "Practice", path: "/practice" },
   { name: "Review", path: "/review" },
+  { name: "Developer Mode", path: "/developer" },
   { name: "Profile", path: "/profile" },
 ];
 
-const sections = [
+const CUSTOM_SECTIONS_KEY = "learning-flow-custom-sections-v1";
+
+const baseSections = [
   {
     id: "foundation",
     title: "Section 1, Unit 1",
@@ -80,14 +83,34 @@ const sections = [
   },
 ];
 
-const lessons = sections.flatMap((section) =>
-  section.lessons.map((lesson) => ({
-    ...lesson,
-    sectionId: section.id,
-    sectionTitle: section.title,
-    sectionSubtitle: section.subtitle,
-  })),
-);
+const loadCustomSections = () => {
+  try {
+    const raw = localStorage.getItem(CUSTOM_SECTIONS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+};
+
+let customSections = loadCustomSections();
+
+const saveCustomSections = () => {
+  localStorage.setItem(CUSTOM_SECTIONS_KEY, JSON.stringify(customSections));
+};
+
+const sections = () => [...baseSections, ...customSections];
+
+const lessons = () =>
+  sections().flatMap((section) =>
+    section.lessons.map((lesson) => ({
+      ...lesson,
+      sectionId: section.id,
+      sectionTitle: section.title,
+      sectionSubtitle: section.subtitle,
+    })),
+  );
 
 const state = {
   profile: { name: "Learner", role: "HCM Consultant" },
@@ -122,8 +145,8 @@ const syncRouteChrome = () => {
   if (topbarEl) topbarEl.hidden = focused;
 };
 
-const findLesson = (id) => lessons.find((lesson) => lesson.id === id) ?? lessons[0];
-const lessonIndex = (id) => lessons.findIndex((lesson) => lesson.id === id);
+const findLesson = (id) => lessons().find((lesson) => lesson.id === id) ?? lessons()[0];
+const lessonIndex = (id) => lessons().findIndex((lesson) => lesson.id === id);
 
 const nextLevelTarget = () => state.level * 120;
 const addFusionPoints = (value) => {
@@ -134,13 +157,17 @@ const addFusionPoints = (value) => {
 };
 
 const statusForLesson = (id) => {
+  const orderedLessons = lessons();
   if (state.completed.includes(id)) return "done";
   const idx = lessonIndex(id);
-  const unlocked = lessons.slice(0, idx).every((lesson) => state.completed.includes(lesson.id));
+  const unlocked = orderedLessons.slice(0, idx).every((lesson) => state.completed.includes(lesson.id));
   return unlocked ? "current" : "locked";
 };
 
-const masteryPercent = () => Math.round((state.completed.length / lessons.length) * 100);
+const masteryPercent = () => {
+  const totalLessons = lessons().length;
+  return Math.round((state.completed.length / Math.max(1, totalLessons)) * 100);
+};
 
 const quests = () => {
   const completedLessons = state.completed.length;
@@ -152,7 +179,7 @@ const quests = () => {
 };
 
 const reviewQueue = () => {
-  const queue = lessons.map((lesson) => ({ id: lesson.id, title: lesson.title, misses: 0 }));
+  const queue = lessons().map((lesson) => ({ id: lesson.id, title: lesson.title, misses: 0 }));
   state.attempts.forEach((attempt) => {
     if (!attempt.correct) {
       const row = queue.find((item) => item.id === attempt.lessonId);
@@ -266,9 +293,10 @@ const renderNode = (lesson, index) => {
 };
 
 const renderSkills = () => {
-  const sectionBlocks = sections
+  const allLessons = lessons();
+  const sectionBlocks = sections()
     .map((section) => {
-      const sectionLessons = lessons.filter((lesson) => lesson.sectionId === section.id);
+      const sectionLessons = allLessons.filter((lesson) => lesson.sectionId === section.id);
       return `
         ${renderSectionHeader(section)}
         <section class="path-block">
@@ -327,7 +355,10 @@ const renderPractice = () => {
     return;
   }
 
-  const progressValue = ((lessonIndex(lesson.id) + 1) / lessons.length) * 100;
+  const progressValue = ((lessonIndex(lesson.id) + 1) / lessons().length) * 100;
+  const hasMultipleChoice = Array.isArray(lesson.question.options) && typeof lesson.question.answer === "number";
+  const questionTitle = lesson.question.title || lesson.question.prompt || "Question";
+  const questionBody = lesson.question.body || "";
 
   appEl.innerHTML = `
     <div class="focused-practice" aria-label="lesson focus view">
@@ -337,74 +368,217 @@ const renderPractice = () => {
       </section>
       <section class="panel lesson-panel" id="lessonPanel">
         <p class="lesson-kicker">${lesson.sectionSubtitle} • +${lesson.fusionPoints} Fusion Points</p>
-        <h3>${lesson.question.prompt}</h3>
-        <div class="answer-grid">
-          ${lesson.question.options.map((option, i) => `<button class="btn answer" data-index="${i}">${option}</button>`).join("")}
-        </div>
-        <p class="feedback" id="feedbackText">Choose one answer.</p>
+        <h3>${questionTitle}</h3>
+        ${questionBody ? `<p class="question-body">${questionBody}</p>` : ""}
+        ${
+          hasMultipleChoice
+            ? `<div class="answer-grid">${lesson.question.options.map((option, i) => `<button class="btn answer" data-index="${i}">${option}</button>`).join("")}</div>
+               <p class="feedback" id="feedbackText">Choose one answer.</p>`
+            : `<form id="textAnswerForm" class="text-answer-form">
+                 <label>
+                   Your answer
+                   <input id="textAnswerInput" type="text" autocomplete="off" required placeholder="Type your answer" />
+                 </label>
+                 <button class="btn primary" type="submit">Check answer</button>
+               </form>
+               <p class="feedback" id="feedbackText">Enter the correct answer exactly.</p>`
+        }
       </section>
       <section class="feedback-dock" id="continueWrap"></section>
     </div>
   `;
 
-  const answerButtons = Array.from(appEl.querySelectorAll(".answer"));
-  answerButtons.forEach((button) => {
-    button.addEventListener(
-      "click",
-      () => {
-        const selectedIndex = Number(button.dataset.index);
-        const correct = selectedIndex === lesson.question.answer;
+  const handleAttempt = (correct) => {
+    state.attempts.push({ lessonId: lesson.id, correct, at: new Date().toISOString() });
 
-        state.attempts.push({ lessonId: lesson.id, correct, at: new Date().toISOString() });
-        lockAnswers(answerButtons, selectedIndex, lesson.question.answer);
+    const panel = document.getElementById("lessonPanel");
+    const feedback = document.getElementById("feedbackText");
+    const continueWrap = document.getElementById("continueWrap");
 
-        const panel = document.getElementById("lessonPanel");
-        const feedback = document.getElementById("feedbackText");
-        const continueWrap = document.getElementById("continueWrap");
+    if (correct) {
+      panel.classList.add("celebrate");
+      spawnConfetti();
+      feedback.textContent = "Nice work!";
+      feedback.classList.add("ok");
+      state.implementationStreak += 1;
+      if (!state.completed.includes(lesson.id)) {
+        state.completed.push(lesson.id);
+        addFusionPoints(lesson.fusionPoints);
+      }
+      continueWrap.className = "feedback-dock success";
+      continueWrap.innerHTML = `<div><strong>Awesome!</strong><p>Module progress updated.</p></div><button id="continueBtn" class="btn success">See rewards</button>`;
+    } else {
+      panel.classList.add("error-flash", "shake");
+      feedback.textContent = "Not quite — try again.";
+      feedback.classList.add("bad");
+      state.hearts = Math.max(0, state.hearts - 1);
+      state.implementationStreak = Math.max(0, state.implementationStreak - 1);
+      setTimeout(() => panel.classList.remove("error-flash"), 150);
+      continueWrap.className = "feedback-dock error";
+      continueWrap.innerHTML = `<div><strong>Almost.</strong><p>Let’s look at how Oracle processes this.</p></div><button id="continueBtn" class="btn primary">Try next</button>`;
+    }
 
-        if (correct) {
-          panel.classList.add("celebrate");
-          spawnConfetti();
-          feedback.textContent = "Nice work!";
-          feedback.classList.add("ok");
-          state.implementationStreak += 1;
-          if (!state.completed.includes(lesson.id)) {
-            state.completed.push(lesson.id);
-            addFusionPoints(lesson.fusionPoints);
-          }
-          continueWrap.className = "feedback-dock success";
-          continueWrap.innerHTML = `<div><strong>Awesome!</strong><p>Module progress updated.</p></div><button id="continueBtn" class="btn success">See rewards</button>`;
-        } else {
-          panel.classList.add("error-flash", "shake");
-          feedback.textContent = "Not quite — try again.";
-          feedback.classList.add("bad");
-          state.hearts = Math.max(0, state.hearts - 1);
-          state.implementationStreak = Math.max(0, state.implementationStreak - 1);
-          setTimeout(() => panel.classList.remove("error-flash"), 150);
-          continueWrap.className = "feedback-dock error";
-          continueWrap.innerHTML = `<div><strong>Almost.</strong><p>Let’s look at how Oracle processes this.</p></div><button id="continueBtn" class="btn primary">Try next</button>`;
+    document.getElementById("continueBtn").addEventListener("click", () => {
+      if (correct) {
+        state.lastCompletion = {
+          lessonId: lesson.id,
+          title: lesson.title,
+          sectionSubtitle: lesson.sectionSubtitle,
+          fusionPoints: lesson.fusionPoints,
+          streak: state.implementationStreak,
+          mastery: masteryPercent(),
+          learned: questionTitle,
+          correctAnswer: hasMultipleChoice
+            ? lesson.question.options[lesson.question.answer]
+            : lesson.question.answerText,
+        };
+        navigate("/lesson-complete");
+        return;
+      }
+      navigate("/skills");
+    });
+  };
+
+  if (hasMultipleChoice) {
+    const answerButtons = Array.from(appEl.querySelectorAll(".answer"));
+    answerButtons.forEach((button) => {
+      button.addEventListener(
+        "click",
+        () => {
+          const selectedIndex = Number(button.dataset.index);
+          const correct = selectedIndex === lesson.question.answer;
+          lockAnswers(answerButtons, selectedIndex, lesson.question.answer);
+          handleAttempt(correct);
+        },
+        { once: true },
+      );
+    });
+    return;
+  }
+
+  const textAnswerForm = document.getElementById("textAnswerForm");
+  const textAnswerInput = document.getElementById("textAnswerInput");
+  textAnswerForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    textAnswerInput.disabled = true;
+    textAnswerForm.querySelector("button").disabled = true;
+
+    const submitted = textAnswerInput.value.trim().toLowerCase();
+    const expected = (lesson.question.answerText || "").trim().toLowerCase();
+    handleAttempt(submitted === expected);
+  });
+};
+
+const renderDeveloper = () => {
+  const unitRows = customSections
+    .map(
+      (section) => `
+      <li>
+        <strong>${section.title}</strong>
+        <small>${section.subtitle}</small>
+        <span>${section.lessons.length} lesson(s)</span>
+      </li>
+    `,
+    )
+    .join("");
+
+  const unitOptions = customSections
+    .map((section) => `<option value="${section.id}">${section.title} — ${section.subtitle}</option>`)
+    .join("");
+
+  renderShell(
+    "Developer Mode",
+    "No-code builder for custom units, lessons, and text-based questions.",
+    null,
+    `
+      <section class="panel developer-grid">
+        <article>
+          <h3>Create Unit</h3>
+          <form id="unitForm" class="developer-form">
+            <label>Unit title <input name="title" required placeholder="Section 2, Unit 1" /></label>
+            <label>Unit subtitle <input name="subtitle" required placeholder="People Analytics" /></label>
+            <button class="btn primary" type="submit">Add unit</button>
+          </form>
+        </article>
+
+        <article>
+          <h3>Create Lesson + Question</h3>
+          <form id="lessonBuilderForm" class="developer-form">
+            <label>Unit
+              <select name="sectionId" ${customSections.length ? "" : "disabled"} required>
+                ${unitOptions || '<option value="">Create a unit first</option>'}
+              </select>
+            </label>
+            <label>Lesson title <input name="lessonTitle" required placeholder="Data roles" /></label>
+            <label>Lesson description <input name="lessonDescription" required placeholder="Who owns workforce metrics" /></label>
+            <label>Question title <input name="questionTitle" required placeholder="Who owns attrition dashboard governance?" /></label>
+            <label>Question body <textarea name="questionBody" rows="3" required placeholder="Describe the operating model expectation."></textarea></label>
+            <label>Correct answer <input name="correctAnswer" required placeholder="HR analytics lead" /></label>
+            <button class="btn primary" type="submit" ${customSections.length ? "" : "disabled"}>Add lesson</button>
+          </form>
+        </article>
+      </section>
+
+      <section class="panel">
+        <h3>Custom units</h3>
+        ${
+          unitRows
+            ? `<ul class="developer-unit-list">${unitRows}</ul>`
+            : '<p class="empty-state">No custom units yet. Use the form above to create one.</p>'
         }
+      </section>
+    `,
+  );
 
-        document.getElementById("continueBtn").addEventListener("click", () => {
-          if (correct) {
-            state.lastCompletion = {
-              lessonId: lesson.id,
-              title: lesson.title,
-              sectionSubtitle: lesson.sectionSubtitle,
-              fusionPoints: lesson.fusionPoints,
-              streak: state.implementationStreak,
-              mastery: masteryPercent(),
-              learned: lesson.question.prompt,
-              correctAnswer: lesson.question.options[lesson.question.answer],
-            };
-            navigate("/lesson-complete");
-            return;
-          }
-          navigate("/skills");
-        });
+  document.getElementById("unitForm").addEventListener("submit", (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const title = form.title.value.trim();
+    const subtitle = form.subtitle.value.trim();
+    if (!title || !subtitle) return;
+
+    customSections.push({
+      id: `custom-unit-${Date.now()}`,
+      title,
+      subtitle,
+      color: customSections.length % 2 === 0 ? "section-primary" : "section-secondary",
+      lessons: [],
+    });
+    saveCustomSections();
+    renderDeveloper();
+  });
+
+  const lessonBuilderForm = document.getElementById("lessonBuilderForm");
+  lessonBuilderForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const sectionId = form.sectionId.value;
+    const section = customSections.find((item) => item.id === sectionId);
+    if (!section) return;
+
+    const lessonTitle = form.lessonTitle.value.trim();
+    const lessonDescription = form.lessonDescription.value.trim();
+    const questionTitle = form.questionTitle.value.trim();
+    const questionBody = form.questionBody.value.trim();
+    const correctAnswer = form.correctAnswer.value.trim();
+
+    if (!lessonTitle || !lessonDescription || !questionTitle || !questionBody || !correctAnswer) return;
+
+    section.lessons.push({
+      id: `custom-lesson-${Date.now()}`,
+      title: lessonTitle,
+      description: lessonDescription,
+      fusionPoints: 20,
+      question: {
+        title: questionTitle,
+        body: questionBody,
+        answerText: correctAnswer,
       },
-      { once: true },
-    );
+    });
+
+    saveCustomSections();
+    form.reset();
+    renderDeveloper();
   });
 };
 
@@ -520,6 +694,7 @@ const renderRoute = () => {
   if (route === "/practice") return renderPractice();
   if (route === "/lesson-complete") return renderLessonComplete();
   if (route === "/review") return renderReview();
+  if (route === "/developer") return renderDeveloper();
   if (route === "/profile") return renderProfile();
   return renderShell("Not found", "Unknown route.", null, `<section class="panel"><code>${route}</code></section>`);
 };
