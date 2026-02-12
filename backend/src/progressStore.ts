@@ -1,5 +1,6 @@
 import { UserProgress } from "./models";
 import { createInitialProgress } from "./progressService";
+import { supabaseAdmin } from "./supabaseAdmin";
 
 const progressByUserId = new Map<string, UserProgress>();
 

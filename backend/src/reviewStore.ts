@@ -1,4 +1,5 @@
 import { QuestionAttempt, QuestionProgress } from "./models";
+import { supabaseAdmin } from "./supabaseAdmin";
 
 interface UserReviewState {
   questionProgress: Map<string, QuestionProgress>;

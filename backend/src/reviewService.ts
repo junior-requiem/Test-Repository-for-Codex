@@ -29,7 +29,7 @@ const computeIntervalDays = (correctStreak: number, wasCorrect: boolean) => {
   return REVIEW_INTERVALS[index];
 };
 
-const buildDefaultProgress = (questionId: string, skillId: string): QuestionProgress => ({
+export const buildDefaultProgress = (questionId: string, skillId: string): QuestionProgress => ({
   questionId,
   skillId,
   lastSeenAt: null,
@@ -151,6 +151,8 @@ const buildQueueItem = (
 export const buildReviewSummary = (
   userId: string,
   availableQuestions: Array<{ questionId: string; skillId: string }>,
+  attempts: QuestionAttempt[],
+  questionProgress: QuestionProgress[],
   now = new Date(),
 ): ReviewSummary => {
   const attempts = getAttempts(userId);
@@ -160,6 +162,7 @@ export const buildReviewSummary = (
     .map((skill) => skill.skillId);
 
   const weakSkillSet = new Set(weakSkills);
+  const progressByQuestionId = new Map(questionProgress.map((progress) => [progress.questionId, progress]));
   const progressList = availableQuestions.map((question) => {
     const existing = getQuestionProgress(userId, question.questionId);
     return existing ?? buildDefaultProgress(question.questionId, question.skillId);

@@ -17,6 +17,8 @@ export interface Router {
   post: (path: string, handler: (req: Request, res: Response) => void | Promise<void>) => void;
 }
 
+const getUserId = (req: Request<{ userId?: string }>): string | undefined => req.userId ?? req.body?.userId;
+
 export const registerProgressRoutes = (router: Router) => {
   router.get(
     "/progress",
