@@ -1,11 +1,18 @@
+import { supabase } from "./supabaseClient.js";
+
 const routes = [
   { name: "Home", path: "/" },
-  { name: "Learn", path: "/skills" },
-  { name: "Practice", path: "/practice" },
-  { name: "Review", path: "/review" },
-  { name: "Developer Mode", path: "/developer" },
-  { name: "Profile", path: "/profile" },
+  { name: "Learn", path: "/skills", requiresAuth: true },
+  { name: "Practice", path: "/practice", requiresAuth: true },
+  { name: "Review", path: "/review", requiresAuth: true },
+  { name: "Developer Mode", path: "/developer", requiresAuth: true },
+  { name: "Profile", path: "/profile", requiresAuth: true },
+  { name: "Login", path: "/login", authOnly: true },
+  { name: "Register", path: "/register", authOnly: true },
 ];
+
+const AUTH_REQUIRED_ROUTES = new Set(["/skills", "/practice", "/lesson-complete", "/review", "/developer", "/profile"]);
+const AUTH_ONLY_ROUTES = new Set(["/login", "/register"]);
 
 const CUSTOM_SECTIONS_KEY = "learning-flow-custom-sections-v1";
 
@@ -122,6 +129,8 @@ const state = {
   attempts: [],
   selectedLessonId: "l4",
   lastCompletion: null,
+  session: null,
+  authReady: false,
 };
 
 const navEl = document.getElementById("nav");
@@ -136,6 +145,8 @@ const getPath = () => {
 const navigate = (path) => {
   location.hash = path;
 };
+
+const isAuthenticated = () => Boolean(state.session);
 
 const isFocusedRoute = (route = getPath()) => route === "/practice" || route === "/lesson-complete";
 
@@ -192,6 +203,11 @@ const reviewQueue = () => {
 const renderNav = () => {
   const current = getPath();
   navEl.innerHTML = routes
+    .filter((route) => {
+      if (route.requiresAuth && !isAuthenticated()) return false;
+      if (route.authOnly && isAuthenticated()) return false;
+      return true;
+    })
     .map((route) => `<button class="nav-pill ${current === route.path ? "active" : ""}" data-route="${route.path}">${route.name}</button>`)
     .join("");
 
@@ -264,6 +280,95 @@ const renderHome = () => {
   );
 
   document.getElementById("openPath").addEventListener("click", () => navigate("/skills"));
+};
+
+const renderLogin = () => {
+  appEl.innerHTML = `
+    <section class="panel" aria-label="login form">
+      <h2>Login</h2>
+      <p>Sign in to continue your learning flow.</p>
+      <form id="loginForm" class="profile-form">
+        <label>Email <input id="loginEmail" type="email" autocomplete="email" required /></label>
+        <label>Password <input id="loginPassword" type="password" autocomplete="current-password" required /></label>
+        <button id="loginSubmit" class="btn primary" type="submit">Login</button>
+      </form>
+      <p id="loginFeedback"></p>
+      <p>Need an account? <button id="goRegister" class="btn" type="button">Register</button></p>
+    </section>
+  `;
+
+  const loginForm = document.getElementById("loginForm");
+  const loginFeedback = document.getElementById("loginFeedback");
+  const loginSubmit = document.getElementById("loginSubmit");
+
+  loginForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    loginFeedback.textContent = "Signing in...";
+    loginSubmit.disabled = true;
+
+    const email = document.getElementById("loginEmail").value.trim();
+    const password = document.getElementById("loginPassword").value;
+
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) {
+      loginFeedback.textContent = error.message;
+      loginSubmit.disabled = false;
+      return;
+    }
+
+    loginFeedback.textContent = "Login successful. Redirecting...";
+    navigate("/");
+  });
+
+  document.getElementById("goRegister").addEventListener("click", () => navigate("/register"));
+};
+
+const renderRegister = () => {
+  appEl.innerHTML = `
+    <section class="panel" aria-label="registration form">
+      <h2>Register</h2>
+      <p>Create your account to track progress.</p>
+      <form id="registerForm" class="profile-form">
+        <label>Email <input id="registerEmail" type="email" autocomplete="email" required /></label>
+        <label>Password <input id="registerPassword" type="password" autocomplete="new-password" required minlength="6" /></label>
+        <button id="registerSubmit" class="btn primary" type="submit">Create account</button>
+      </form>
+      <p id="registerFeedback"></p>
+      <p>Already have an account? <button id="goLogin" class="btn" type="button">Login</button></p>
+    </section>
+  `;
+
+  const registerForm = document.getElementById("registerForm");
+  const registerFeedback = document.getElementById("registerFeedback");
+  const registerSubmit = document.getElementById("registerSubmit");
+
+  registerForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    registerFeedback.textContent = "Creating your account...";
+    registerSubmit.disabled = true;
+
+    const email = document.getElementById("registerEmail").value.trim();
+    const password = document.getElementById("registerPassword").value;
+
+    const { data, error } = await supabase.auth.signUp({ email, password });
+
+    if (error) {
+      registerFeedback.textContent = error.message;
+      registerSubmit.disabled = false;
+      return;
+    }
+
+    if (data.session) {
+      registerFeedback.textContent = "Registration successful. Redirecting...";
+      navigate("/");
+      return;
+    }
+
+    registerFeedback.textContent = "Account created. Check your email to confirm your address before logging in.";
+    registerSubmit.disabled = false;
+  });
+
+  document.getElementById("goLogin").addEventListener("click", () => navigate("/login"));
 };
 
 const renderSectionHeader = (section) => `
@@ -406,58 +511,45 @@ const renderPractice = () => {
         addFusionPoints(lesson.fusionPoints);
       }
       continueWrap.className = "feedback-dock success";
-      continueWrap.innerHTML = `<div><strong>Awesome!</strong><p>Module progress updated.</p></div><button id="continueBtn" class="btn success">See rewards</button>`;
-    } else {
-      panel.classList.add("error-flash", "shake");
-      feedback.textContent = "Not quite — try again.";
-      feedback.classList.add("bad");
-      state.hearts = Math.max(0, state.hearts - 1);
-      state.implementationStreak = Math.max(0, state.implementationStreak - 1);
-      setTimeout(() => panel.classList.remove("error-flash"), 150);
-      continueWrap.className = "feedback-dock error";
-      continueWrap.innerHTML = `<div><strong>Almost.</strong><p>Let’s look at how Oracle processes this.</p></div><button id="continueBtn" class="btn primary">Try next</button>`;
-    }
-
-    document.getElementById("continueBtn").addEventListener("click", () => {
-      if (correct) {
+      continueWrap.innerHTML = `<button class="btn primary" id="continueLesson">Continue</button>`;
+      document.getElementById("continueLesson").addEventListener("click", () => {
         state.lastCompletion = {
-          lessonId: lesson.id,
           title: lesson.title,
           sectionSubtitle: lesson.sectionSubtitle,
           fusionPoints: lesson.fusionPoints,
           streak: state.implementationStreak,
           mastery: masteryPercent(),
           learned: questionTitle,
-          correctAnswer: hasMultipleChoice
-            ? lesson.question.options[lesson.question.answer]
-            : lesson.question.answerText,
+          correctAnswer: hasMultipleChoice ? lesson.question.options[lesson.question.answer] : lesson.question.answerText,
         };
         navigate("/lesson-complete");
-        return;
-      }
-      navigate("/skills");
-    });
+      });
+    } else {
+      panel.classList.add("shake");
+      feedback.textContent = "Not quite. Try again.";
+      feedback.classList.remove("ok");
+      state.hearts = Math.max(0, state.hearts - 1);
+      continueWrap.className = "feedback-dock error";
+      continueWrap.innerHTML = `<p>Heart lost. Remaining hearts: ${state.hearts}</p>`;
+      setTimeout(() => panel.classList.remove("shake"), 400);
+    }
   };
 
   if (hasMultipleChoice) {
-    const answerButtons = Array.from(appEl.querySelectorAll(".answer"));
-    answerButtons.forEach((button) => {
-      button.addEventListener(
-        "click",
-        () => {
-          const selectedIndex = Number(button.dataset.index);
-          const correct = selectedIndex === lesson.question.answer;
-          lockAnswers(answerButtons, selectedIndex, lesson.question.answer);
-          handleAttempt(correct);
-        },
-        { once: true },
-      );
+    const buttons = Array.from(appEl.querySelectorAll(".answer-grid .answer"));
+    buttons.forEach((button) => {
+      button.addEventListener("click", () => {
+        const selected = Number(button.dataset.index);
+        lockAnswers(buttons, selected, lesson.question.answer);
+        handleAttempt(selected === lesson.question.answer);
+      });
     });
     return;
   }
 
   const textAnswerForm = document.getElementById("textAnswerForm");
   const textAnswerInput = document.getElementById("textAnswerInput");
+
   textAnswerForm.addEventListener("submit", (event) => {
     event.preventDefault();
     textAnswerInput.disabled = true;
@@ -665,6 +757,9 @@ const renderProfile = () => {
           <label>Name <input id="nameInput" /></label>
           <label>Role <input id="roleInput" /></label>
         </div>
+        <div class="profile-form-actions">
+          <button id="logoutAction" class="btn" type="button">Logout</button>
+        </div>
         <p id="profileSummary"></p>
       </section>
     `,
@@ -683,13 +778,37 @@ const renderProfile = () => {
     state.profile.role = roleInput.value.trim() || state.profile.role;
     renderProfile();
   });
+
+  document.getElementById("logoutAction").addEventListener("click", async () => {
+    await supabase.auth.signOut();
+    navigate("/login");
+  });
 };
 
 const renderRoute = () => {
+  if (!state.authReady) {
+    appEl.innerHTML = '<section class="panel"><p>Loading session...</p></section>';
+    return;
+  }
+
   syncRouteChrome();
-  renderNav();
   const route = getPath();
+
+  if (AUTH_REQUIRED_ROUTES.has(route) && !isAuthenticated()) {
+    navigate("/login");
+    return;
+  }
+
+  if (AUTH_ONLY_ROUTES.has(route) && isAuthenticated()) {
+    navigate("/");
+    return;
+  }
+
+  renderNav();
+
   if (route === "/") return renderHome();
+  if (route === "/login") return renderLogin();
+  if (route === "/register") return renderRegister();
   if (route === "/skills") return renderSkills();
   if (route === "/practice") return renderPractice();
   if (route === "/lesson-complete") return renderLessonComplete();
@@ -699,8 +818,20 @@ const renderRoute = () => {
   return renderShell("Not found", "Unknown route.", null, `<section class="panel"><code>${route}</code></section>`);
 };
 
+const bootstrapAuth = async () => {
+  const { data } = await supabase.auth.getSession();
+  state.session = data.session;
+  state.authReady = true;
+
+  supabase.auth.onAuthStateChange((_event, session) => {
+    state.session = session;
+    renderRoute();
+  });
+};
+
 window.addEventListener("hashchange", renderRoute);
-window.addEventListener("load", () => {
+window.addEventListener("load", async () => {
   if (!location.hash) navigate("/");
+  await bootstrapAuth();
   renderRoute();
 });
