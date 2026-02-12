@@ -1,9 +1,10 @@
+import { AuthenticatedRequest, withAuth } from "./auth";
 import { applyLessonCompletion, getXpToNextLevel } from "./progressService";
 import { getProgress, setProgress } from "./progressStore";
 
 export interface Request<TBody = unknown> {
   body: TBody;
-  userId?: string;
+  headers?: Record<string, string | string[] | undefined>;
 }
 
 export interface Response<TBody = unknown> {
@@ -19,51 +20,49 @@ export interface Router {
 const getUserId = (req: Request<{ userId?: string }>): string | undefined => req.userId ?? req.body?.userId;
 
 export const registerProgressRoutes = (router: Router) => {
-  router.get("/progress", async (req, res) => {
-    const userId = getUserId(req);
+  router.get(
+    "/progress",
+    withAuth((_req: AuthenticatedRequest, res) => {
+      const progress = getProgress(_req.auth.userId);
+      res.json({
+        progress,
+        xpToNextLevel: getXpToNextLevel(progress.xp),
+      });
+    }),
+  );
 
-    if (!userId) {
-      res.status(401).json({ message: "userId is required" });
-      return;
-    }
+  router.post(
+    "/progress/lesson-complete",
+    withAuth(
+      (
+        req: AuthenticatedRequest<{
+          xpEarned: number;
+          heartsChange?: number;
+          badgesEarned?: string[];
+        }>,
+        res,
+      ) => {
+        const { xpEarned, heartsChange, badgesEarned } = req.body;
 
-    const progress = await getProgress(userId);
-    res.json({
-      progress,
-      xpToNextLevel: getXpToNextLevel(progress.xp),
-    });
-  });
+        if (typeof xpEarned !== "number") {
+          res.status(400).json({ message: "xpEarned must be provided" });
+          return;
+        }
 
-  router.post("/progress/lesson-complete", async (req, res) => {
-    const { xpEarned, heartsChange, badgesEarned } = req.body as {
-      userId?: string;
-      xpEarned: number;
-      heartsChange?: number;
-      badgesEarned?: string[];
-    };
-    const userId = getUserId(req as Request<{ userId?: string }>);
+        const currentProgress = getProgress(req.auth.userId);
+        const { updatedProgress, levelUp } = applyLessonCompletion(currentProgress, {
+          xpEarned,
+          heartsChange,
+          badgesEarned,
+        });
 
-    if (!userId) {
-      res.status(401).json({ message: "userId is required" });
-      return;
-    }
-
-    if (typeof xpEarned !== "number") {
-      res.status(400).json({ message: "xpEarned must be provided" });
-      return;
-    }
-
-    const { updatedProgress, levelUp } = applyLessonCompletion(await getProgress(userId), {
-      xpEarned,
-      heartsChange,
-      badgesEarned,
-    });
-
-    await setProgress(userId, updatedProgress);
-    res.json({
-      progress: updatedProgress,
-      xpToNextLevel: getXpToNextLevel(updatedProgress.xp),
-      levelUp,
-    });
-  });
+        setProgress(req.auth.userId, updatedProgress);
+        res.json({
+          progress: updatedProgress,
+          xpToNextLevel: getXpToNextLevel(updatedProgress.xp),
+          levelUp,
+        });
+      },
+    ),
+  );
 };

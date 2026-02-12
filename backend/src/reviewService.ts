@@ -5,6 +5,7 @@ import {
   ReviewQueueItem,
   ReviewSummary,
 } from "./models";
+import { addAttempt, getAttempts, getQuestionProgress, setQuestionProgress } from "./reviewStore";
 
 const REVIEW_INTERVALS = [1, 3, 7, 14, 30];
 const WEAK_SKILL_THRESHOLD = 0.7;
@@ -42,12 +43,15 @@ export const buildDefaultProgress = (questionId: string, skillId: string): Quest
 });
 
 export const recordQuestionAttempt = (
-  existing: QuestionProgress,
+  userId: string,
   payload: Omit<QuestionAttempt, "attemptedAt">,
   now = new Date(),
 ) => {
   const attemptedAt = toIso(now);
   const attempt: QuestionAttempt = { ...payload, attemptedAt };
+  addAttempt(userId, attempt);
+
+  const existing = getQuestionProgress(userId, payload.questionId) ?? buildDefaultProgress(payload.questionId, payload.skillId);
   const wasCorrect = payload.correct;
   const correctStreak = wasCorrect ? existing.correctStreak + 1 : 0;
   const intervalDays = computeIntervalDays(correctStreak, wasCorrect);
@@ -66,7 +70,8 @@ export const recordQuestionAttempt = (
     nextReviewAt,
   };
 
-  return { attempt, updatedProgress: updated };
+  setQuestionProgress(userId, updated);
+  return updated;
 };
 
 export const buildReviewAnalytics = (attempts: QuestionAttempt[]): ReviewAnalytics => {
@@ -144,11 +149,13 @@ const buildQueueItem = (
 };
 
 export const buildReviewSummary = (
+  userId: string,
   availableQuestions: Array<{ questionId: string; skillId: string }>,
   attempts: QuestionAttempt[],
   questionProgress: QuestionProgress[],
   now = new Date(),
 ): ReviewSummary => {
+  const attempts = getAttempts(userId);
   const analytics = buildReviewAnalytics(attempts);
   const weakSkills = analytics.accuracyBySkill
     .filter((skill) => skill.totalAttempts === 0 || skill.accuracy < WEAK_SKILL_THRESHOLD)
@@ -157,7 +164,7 @@ export const buildReviewSummary = (
   const weakSkillSet = new Set(weakSkills);
   const progressByQuestionId = new Map(questionProgress.map((progress) => [progress.questionId, progress]));
   const progressList = availableQuestions.map((question) => {
-    const existing = progressByQuestionId.get(question.questionId);
+    const existing = getQuestionProgress(userId, question.questionId);
     return existing ?? buildDefaultProgress(question.questionId, question.skillId);
   });
 

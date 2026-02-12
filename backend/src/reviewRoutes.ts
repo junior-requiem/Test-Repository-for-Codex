@@ -1,9 +1,9 @@
-import { buildDefaultProgress, buildReviewSummary, recordQuestionAttempt } from "./reviewService";
-import { addAttempt, getAllQuestionProgress, getAttempts, getQuestionProgress, setQuestionProgress } from "./reviewStore";
+import { AuthenticatedRequest, withAuth } from "./auth";
+import { buildReviewSummary, recordQuestionAttempt } from "./reviewService";
 
 export interface Request<TBody = unknown> {
   body: TBody;
-  userId?: string;
+  headers?: Record<string, string | string[] | undefined>;
 }
 
 export interface Response<TBody = unknown> {
@@ -19,64 +19,56 @@ export interface Router {
 const getUserId = (req: Request<{ userId?: string }>): string | undefined => req.userId ?? req.body?.userId;
 
 export const registerReviewRoutes = (router: Router) => {
-  router.post("/review/queue", async (req, res) => {
-    const userId = getUserId(req as Request<{ userId?: string }>);
-    const { availableQuestions } = req.body as {
-      userId?: string;
-      availableQuestions: Array<{ questionId: string; skillId: string }>;
-    };
+  router.post(
+    "/review/queue",
+    withAuth(
+      (
+        req: AuthenticatedRequest<{
+          availableQuestions: Array<{ questionId: string; skillId: string }>;
+        }>,
+        res,
+      ) => {
+        const { availableQuestions } = req.body;
 
-    if (!userId) {
-      res.status(401).json({ message: "userId is required" });
-      return;
-    }
+        if (!Array.isArray(availableQuestions)) {
+          res.status(400).json({ message: "availableQuestions must be provided" });
+          return;
+        }
 
-    if (!Array.isArray(availableQuestions)) {
-      res.status(400).json({ message: "availableQuestions must be provided" });
-      return;
-    }
+        const summary = buildReviewSummary(req.auth.userId, availableQuestions);
+        res.json(summary);
+      },
+    ),
+  );
 
-    const attempts = await getAttempts(userId);
-    const storedProgress = await getAllQuestionProgress(
-      userId,
-      availableQuestions.map((question) => question.questionId),
-    );
+  router.post(
+    "/review/attempt",
+    withAuth(
+      (
+        req: AuthenticatedRequest<{
+          questionId: string;
+          skillId: string;
+          correct: boolean;
+          timeToCompleteMs: number;
+        }>,
+        res,
+      ) => {
+        const { questionId, skillId, correct, timeToCompleteMs } = req.body;
 
-    const summary = buildReviewSummary(availableQuestions, attempts, storedProgress);
-    res.json(summary);
-  });
+        if (!questionId || !skillId || typeof correct !== "boolean") {
+          res.status(400).json({ message: "questionId, skillId, and correct must be provided" });
+          return;
+        }
 
-  router.post("/review/attempt", async (req, res) => {
-    const userId = getUserId(req as Request<{ userId?: string }>);
-    const { questionId, skillId, correct, timeToCompleteMs } = req.body as {
-      userId?: string;
-      questionId: string;
-      skillId: string;
-      correct: boolean;
-      timeToCompleteMs: number;
-    };
+        const updated = recordQuestionAttempt(req.auth.userId, {
+          questionId,
+          skillId,
+          correct,
+          timeToCompleteMs: Math.max(timeToCompleteMs ?? 0, 0),
+        });
 
-    if (!userId) {
-      res.status(401).json({ message: "userId is required" });
-      return;
-    }
-
-    if (!questionId || !skillId || typeof correct !== "boolean") {
-      res.status(400).json({ message: "questionId, skillId, and correct must be provided" });
-      return;
-    }
-
-    const existing = (await getQuestionProgress(userId, questionId)) ?? buildDefaultProgress(questionId, skillId);
-    const { attempt, updatedProgress } = recordQuestionAttempt(existing, {
-      questionId,
-      skillId,
-      correct,
-      timeToCompleteMs: Math.max(timeToCompleteMs ?? 0, 0),
-    });
-
-    await addAttempt(userId, attempt);
-    await setQuestionProgress(userId, updatedProgress);
-
-    res.json(updatedProgress);
-  });
+        res.json(updated);
+      },
+    ),
+  );
 };
