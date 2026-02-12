@@ -1,20 +1,44 @@
 import { QuestionAttempt, QuestionProgress } from "./models";
+import { supabaseAdmin } from "./supabaseAdmin";
 
-const questionProgress = new Map<string, QuestionProgress>();
-const attempts: QuestionAttempt[] = [];
+interface UserReviewState {
+  questionProgress: Map<string, QuestionProgress>;
+  attempts: QuestionAttempt[];
+}
 
-const buildKey = (questionId: string) => questionId;
+const reviewStateByUser = new Map<string, UserReviewState>();
 
-export const getQuestionProgress = (questionId: string) => questionProgress.get(buildKey(questionId));
+const getUserState = (userId: string): UserReviewState => {
+  const existing = reviewStateByUser.get(userId);
+  if (existing) {
+    return existing;
+  }
 
-export const setQuestionProgress = (progress: QuestionProgress) => {
-  questionProgress.set(buildKey(progress.questionId), progress);
+  const initialState: UserReviewState = {
+    questionProgress: new Map<string, QuestionProgress>(),
+    attempts: [],
+  };
+
+  reviewStateByUser.set(userId, initialState);
+  return initialState;
 };
 
-export const getAllQuestionProgress = () => Array.from(questionProgress.values());
-
-export const addAttempt = (attempt: QuestionAttempt) => {
-  attempts.push(attempt);
+export const getQuestionProgress = (userId: string, questionId: string) => {
+  return getUserState(userId).questionProgress.get(questionId);
 };
 
-export const getAttempts = () => attempts.slice();
+export const setQuestionProgress = (userId: string, progress: QuestionProgress) => {
+  getUserState(userId).questionProgress.set(progress.questionId, progress);
+};
+
+export const getAllQuestionProgress = (userId: string) => {
+  return Array.from(getUserState(userId).questionProgress.values());
+};
+
+export const addAttempt = (userId: string, attempt: QuestionAttempt) => {
+  getUserState(userId).attempts.push(attempt);
+};
+
+export const getAttempts = (userId: string) => {
+  return getUserState(userId).attempts.slice();
+};
