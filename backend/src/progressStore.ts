@@ -1,10 +1,19 @@
 import { UserProgress } from "./models";
 import { createInitialProgress } from "./progressService";
 
-let progress: UserProgress = createInitialProgress();
+const progressByUserId = new Map<string, UserProgress>();
 
-export const getProgress = () => progress;
+export const getProgress = (userId: string) => {
+  const existing = progressByUserId.get(userId);
+  if (existing) {
+    return existing;
+  }
 
-export const setProgress = (updated: UserProgress) => {
-  progress = updated;
+  const initial = createInitialProgress();
+  progressByUserId.set(userId, initial);
+  return initial;
+};
+
+export const setProgress = (userId: string, updated: UserProgress) => {
+  progressByUserId.set(userId, updated);
 };

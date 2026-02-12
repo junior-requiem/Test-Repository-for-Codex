@@ -1,7 +1,9 @@
+import { AuthenticatedRequest, withAuth } from "./auth";
 import { buildReviewSummary, recordQuestionAttempt } from "./reviewService";
 
 export interface Request<TBody = unknown> {
   body: TBody;
+  headers?: Record<string, string | string[] | undefined>;
 }
 
 export interface Response<TBody = unknown> {
@@ -10,45 +12,61 @@ export interface Response<TBody = unknown> {
 }
 
 export interface Router {
-  get: (path: string, handler: (req: Request, res: Response) => void) => void;
-  post: (path: string, handler: (req: Request, res: Response) => void) => void;
+  get: (path: string, handler: (req: Request, res: Response) => void | Promise<void>) => void;
+  post: (path: string, handler: (req: Request, res: Response) => void | Promise<void>) => void;
 }
 
 export const registerReviewRoutes = (router: Router) => {
-  router.post("/review/queue", (req, res) => {
-    const { availableQuestions } = req.body as {
-      availableQuestions: Array<{ questionId: string; skillId: string }>;
-    };
+  router.post(
+    "/review/queue",
+    withAuth(
+      (
+        req: AuthenticatedRequest<{
+          availableQuestions: Array<{ questionId: string; skillId: string }>;
+        }>,
+        res,
+      ) => {
+        const { availableQuestions } = req.body;
 
-    if (!Array.isArray(availableQuestions)) {
-      res.status(400).json({ message: "availableQuestions must be provided" });
-      return;
-    }
+        if (!Array.isArray(availableQuestions)) {
+          res.status(400).json({ message: "availableQuestions must be provided" });
+          return;
+        }
 
-    const summary = buildReviewSummary(availableQuestions);
-    res.json(summary);
-  });
+        const summary = buildReviewSummary(req.auth.userId, availableQuestions);
+        res.json(summary);
+      },
+    ),
+  );
 
-  router.post("/review/attempt", (req, res) => {
-    const { questionId, skillId, correct, timeToCompleteMs } = req.body as {
-      questionId: string;
-      skillId: string;
-      correct: boolean;
-      timeToCompleteMs: number;
-    };
+  router.post(
+    "/review/attempt",
+    withAuth(
+      (
+        req: AuthenticatedRequest<{
+          questionId: string;
+          skillId: string;
+          correct: boolean;
+          timeToCompleteMs: number;
+        }>,
+        res,
+      ) => {
+        const { questionId, skillId, correct, timeToCompleteMs } = req.body;
 
-    if (!questionId || !skillId || typeof correct !== "boolean") {
-      res.status(400).json({ message: "questionId, skillId, and correct must be provided" });
-      return;
-    }
+        if (!questionId || !skillId || typeof correct !== "boolean") {
+          res.status(400).json({ message: "questionId, skillId, and correct must be provided" });
+          return;
+        }
 
-    const updated = recordQuestionAttempt({
-      questionId,
-      skillId,
-      correct,
-      timeToCompleteMs: Math.max(timeToCompleteMs ?? 0, 0),
-    });
+        const updated = recordQuestionAttempt(req.auth.userId, {
+          questionId,
+          skillId,
+          correct,
+          timeToCompleteMs: Math.max(timeToCompleteMs ?? 0, 0),
+        });
 
-    res.json(updated);
-  });
+        res.json(updated);
+      },
+    ),
+  );
 };
