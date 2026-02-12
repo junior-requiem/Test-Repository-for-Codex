@@ -2,6 +2,27 @@
 
 Interactive single-page app with hash routes, Apple-style typography/layout, and Duolingo-inspired engagement patterns tuned for Oracle Fusion training.
 
+## Required Supabase configuration
+Set Supabase values with either build-time variables or runtime injection:
+
+### Option A: Build-time environment variables
+- `SUPABASE_URL` (or `VITE_SUPABASE_URL`)
+- `SUPABASE_ANON_KEY` (or `VITE_SUPABASE_ANON_KEY`)
+
+### Option B: Runtime injected configuration
+In `frontend/index.html`, define:
+
+```html
+<script>
+  window.__APP_CONFIG__ = {
+    SUPABASE_URL: "https://your-project.supabase.co",
+    SUPABASE_ANON_KEY: "your-anon-key"
+  };
+</script>
+```
+
+The app fails fast at bootstrap with a clear UI error if required values are missing.
+
 ## Routes
 | Screen | Route |
 | --- | --- |
