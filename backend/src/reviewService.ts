@@ -5,7 +5,6 @@ import {
   ReviewQueueItem,
   ReviewSummary,
 } from "./models";
-import { addAttempt, getAllQuestionProgress, getAttempts, getQuestionProgress, setQuestionProgress } from "./reviewStore";
 
 const REVIEW_INTERVALS = [1, 3, 7, 14, 30];
 const WEAK_SKILL_THRESHOLD = 0.7;
@@ -29,7 +28,7 @@ const computeIntervalDays = (correctStreak: number, wasCorrect: boolean) => {
   return REVIEW_INTERVALS[index];
 };
 
-const buildDefaultProgress = (questionId: string, skillId: string): QuestionProgress => ({
+export const buildDefaultProgress = (questionId: string, skillId: string): QuestionProgress => ({
   questionId,
   skillId,
   lastSeenAt: null,
@@ -43,14 +42,12 @@ const buildDefaultProgress = (questionId: string, skillId: string): QuestionProg
 });
 
 export const recordQuestionAttempt = (
+  existing: QuestionProgress,
   payload: Omit<QuestionAttempt, "attemptedAt">,
   now = new Date(),
 ) => {
   const attemptedAt = toIso(now);
   const attempt: QuestionAttempt = { ...payload, attemptedAt };
-  addAttempt(attempt);
-
-  const existing = getQuestionProgress(payload.questionId) ?? buildDefaultProgress(payload.questionId, payload.skillId);
   const wasCorrect = payload.correct;
   const correctStreak = wasCorrect ? existing.correctStreak + 1 : 0;
   const intervalDays = computeIntervalDays(correctStreak, wasCorrect);
@@ -69,8 +66,7 @@ export const recordQuestionAttempt = (
     nextReviewAt,
   };
 
-  setQuestionProgress(updated);
-  return updated;
+  return { attempt, updatedProgress: updated };
 };
 
 export const buildReviewAnalytics = (attempts: QuestionAttempt[]): ReviewAnalytics => {
@@ -149,17 +145,19 @@ const buildQueueItem = (
 
 export const buildReviewSummary = (
   availableQuestions: Array<{ questionId: string; skillId: string }>,
+  attempts: QuestionAttempt[],
+  questionProgress: QuestionProgress[],
   now = new Date(),
 ): ReviewSummary => {
-  const attempts = getAttempts();
   const analytics = buildReviewAnalytics(attempts);
   const weakSkills = analytics.accuracyBySkill
     .filter((skill) => skill.totalAttempts === 0 || skill.accuracy < WEAK_SKILL_THRESHOLD)
     .map((skill) => skill.skillId);
 
   const weakSkillSet = new Set(weakSkills);
+  const progressByQuestionId = new Map(questionProgress.map((progress) => [progress.questionId, progress]));
   const progressList = availableQuestions.map((question) => {
-    const existing = getQuestionProgress(question.questionId);
+    const existing = progressByQuestionId.get(question.questionId);
     return existing ?? buildDefaultProgress(question.questionId, question.skillId);
   });
 
