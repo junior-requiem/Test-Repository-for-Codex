@@ -1,4 +1,40 @@
-import { supabase } from "./supabaseClient.js";
+const readSupabaseConfig = () => {
+  const runtimeConfig = window.__APP_CONFIG__ ?? {};
+  const buildEnv = import.meta?.env ?? {};
+
+  const supabaseUrl = runtimeConfig.SUPABASE_URL ?? buildEnv.SUPABASE_URL ?? buildEnv.VITE_SUPABASE_URL;
+  const supabaseAnonKey = runtimeConfig.SUPABASE_ANON_KEY ?? buildEnv.SUPABASE_ANON_KEY ?? buildEnv.VITE_SUPABASE_ANON_KEY;
+
+  const missing = [
+    !supabaseUrl ? "SUPABASE_URL" : null,
+    !supabaseAnonKey ? "SUPABASE_ANON_KEY" : null,
+  ].filter(Boolean);
+
+  return {
+    supabaseUrl,
+    supabaseAnonKey,
+    missing,
+  };
+};
+
+const renderConfigError = (missingKeys) => {
+  const app = document.getElementById("app");
+  if (!app) return;
+
+  app.innerHTML = `
+    <section class="card" role="alert" aria-live="assertive">
+      <h2>Configuration error</h2>
+      <p>Missing required Supabase configuration: <strong>${missingKeys.join(", ")}</strong>.</p>
+      <p>Define values as build-time env vars (<code>SUPABASE_URL</code>, <code>SUPABASE_ANON_KEY</code> or <code>VITE_SUPABASE_URL</code>, <code>VITE_SUPABASE_ANON_KEY</code>) or inject <code>window.__APP_CONFIG__</code> before loading the app.</p>
+    </section>
+  `;
+};
+
+const supabaseConfig = readSupabaseConfig();
+if (supabaseConfig.missing.length) {
+  renderConfigError(supabaseConfig.missing);
+  throw new Error(`Missing Supabase configuration: ${supabaseConfig.missing.join(", ")}`);
+}
 
 const routes = [
   { name: "Home", path: "/" },
