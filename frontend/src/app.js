@@ -1,9 +1,21 @@
 const readSupabaseConfig = () => {
   const runtimeConfig = window.__APP_CONFIG__ ?? {};
+  const legacyRuntimeConfig = {
+    SUPABASE_URL: window.SUPABASE_URL ?? window.__SUPABASE_URL__,
+    SUPABASE_ANON_KEY: window.SUPABASE_ANON_KEY ?? window.__SUPABASE_ANON_KEY__,
+  };
   const buildEnv = import.meta?.env ?? {};
 
-  const supabaseUrl = runtimeConfig.SUPABASE_URL ?? buildEnv.SUPABASE_URL ?? buildEnv.VITE_SUPABASE_URL;
-  const supabaseAnonKey = runtimeConfig.SUPABASE_ANON_KEY ?? buildEnv.SUPABASE_ANON_KEY ?? buildEnv.VITE_SUPABASE_ANON_KEY;
+  const supabaseUrl =
+    runtimeConfig.SUPABASE_URL ??
+    legacyRuntimeConfig.SUPABASE_URL ??
+    buildEnv.SUPABASE_URL ??
+    buildEnv.VITE_SUPABASE_URL;
+  const supabaseAnonKey =
+    runtimeConfig.SUPABASE_ANON_KEY ??
+    legacyRuntimeConfig.SUPABASE_ANON_KEY ??
+    buildEnv.SUPABASE_ANON_KEY ??
+    buildEnv.VITE_SUPABASE_ANON_KEY;
 
   const missing = [
     !supabaseUrl ? "SUPABASE_URL" : null,
@@ -25,7 +37,7 @@ const renderConfigError = (missingKeys) => {
     <section class="card" role="alert" aria-live="assertive">
       <h2>Configuration error</h2>
       <p>Missing required Supabase configuration: <strong>${missingKeys.join(", ")}</strong>.</p>
-      <p>Define values as build-time env vars (<code>SUPABASE_URL</code>, <code>SUPABASE_ANON_KEY</code> or <code>VITE_SUPABASE_URL</code>, <code>VITE_SUPABASE_ANON_KEY</code>) or inject <code>window.__APP_CONFIG__</code> before loading the app.</p>
+      <p>Define values as build-time env vars (<code>SUPABASE_URL</code>, <code>SUPABASE_ANON_KEY</code> or <code>VITE_SUPABASE_URL</code>, <code>VITE_SUPABASE_ANON_KEY</code>) or inject <code>window.__APP_CONFIG__</code> before loading the app. Legacy globals (<code>window.SUPABASE_URL</code>, <code>window.SUPABASE_ANON_KEY</code>) are also supported.</p>
     </section>
   `;
 };

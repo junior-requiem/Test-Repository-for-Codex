@@ -9,6 +9,10 @@ declare global {
       SUPABASE_URL?: string;
       SUPABASE_ANON_KEY?: string;
     };
+    SUPABASE_URL?: string;
+    SUPABASE_ANON_KEY?: string;
+    __SUPABASE_URL__?: string;
+    __SUPABASE_ANON_KEY__?: string;
   }
 }
 
@@ -23,8 +27,9 @@ const readBuildTimeEnv = (): EnvRecord => {
 };
 
 const readRuntimeEnv = (): EnvRecord => ({
-  SUPABASE_URL: window.__APP_CONFIG__?.SUPABASE_URL,
-  SUPABASE_ANON_KEY: window.__APP_CONFIG__?.SUPABASE_ANON_KEY,
+  SUPABASE_URL: window.__APP_CONFIG__?.SUPABASE_URL ?? window.SUPABASE_URL ?? window.__SUPABASE_URL__,
+  SUPABASE_ANON_KEY:
+    window.__APP_CONFIG__?.SUPABASE_ANON_KEY ?? window.SUPABASE_ANON_KEY ?? window.__SUPABASE_ANON_KEY__,
 });
 
 export const getFrontendConfig = (): FrontendConfig => {
