@@ -1,9 +1,23 @@
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
 const readSupabaseConfig = () => {
   const runtimeConfig = window.__APP_CONFIG__ ?? {};
+  const legacyRuntimeConfig = {
+    SUPABASE_URL: window.SUPABASE_URL ?? window.__SUPABASE_URL__,
+    SUPABASE_ANON_KEY: window.SUPABASE_ANON_KEY ?? window.__SUPABASE_ANON_KEY__,
+  };
   const buildEnv = import.meta?.env ?? {};
 
-  const supabaseUrl = runtimeConfig.SUPABASE_URL ?? buildEnv.SUPABASE_URL ?? buildEnv.VITE_SUPABASE_URL;
-  const supabaseAnonKey = runtimeConfig.SUPABASE_ANON_KEY ?? buildEnv.SUPABASE_ANON_KEY ?? buildEnv.VITE_SUPABASE_ANON_KEY;
+  const supabaseUrl =
+    runtimeConfig.SUPABASE_URL ??
+    legacyRuntimeConfig.SUPABASE_URL ??
+    buildEnv.SUPABASE_URL ??
+    buildEnv.VITE_SUPABASE_URL;
+  const supabaseAnonKey =
+    runtimeConfig.SUPABASE_ANON_KEY ??
+    legacyRuntimeConfig.SUPABASE_ANON_KEY ??
+    buildEnv.SUPABASE_ANON_KEY ??
+    buildEnv.VITE_SUPABASE_ANON_KEY;
 
   const missing = [
     !supabaseUrl ? "SUPABASE_URL" : null,
@@ -25,7 +39,7 @@ const renderConfigError = (missingKeys) => {
     <section class="card" role="alert" aria-live="assertive">
       <h2>Configuration error</h2>
       <p>Missing required Supabase configuration: <strong>${missingKeys.join(", ")}</strong>.</p>
-      <p>Define values as build-time env vars (<code>SUPABASE_URL</code>, <code>SUPABASE_ANON_KEY</code> or <code>VITE_SUPABASE_URL</code>, <code>VITE_SUPABASE_ANON_KEY</code>) or inject <code>window.__APP_CONFIG__</code> before loading the app.</p>
+      <p>Define values as build-time env vars (<code>SUPABASE_URL</code>, <code>SUPABASE_ANON_KEY</code> or <code>VITE_SUPABASE_URL</code>, <code>VITE_SUPABASE_ANON_KEY</code>) or inject <code>window.__APP_CONFIG__</code> before loading the app. Legacy globals (<code>window.SUPABASE_URL</code>, <code>window.SUPABASE_ANON_KEY</code>) are also supported.</p>
     </section>
   `;
 };
@@ -35,6 +49,8 @@ if (supabaseConfig.missing.length) {
   renderConfigError(supabaseConfig.missing);
   throw new Error(`Missing Supabase configuration: ${supabaseConfig.missing.join(", ")}`);
 }
+
+const supabase = createClient(supabaseConfig.supabaseUrl, supabaseConfig.supabaseAnonKey);
 
 const routes = [
   { name: "Home", path: "/" },
@@ -167,6 +183,7 @@ const state = {
   lastCompletion: null,
   session: null,
   authReady: false,
+  authError: null,
 };
 
 const navEl = document.getElementById("nav");
@@ -323,6 +340,7 @@ const renderLogin = () => {
     <section class="panel" aria-label="login form">
       <h2>Login</h2>
       <p>Sign in to continue your learning flow.</p>
+      ${state.authError ? `<p role="alert">${state.authError}</p>` : ""}
       <form id="loginForm" class="profile-form">
         <label>Email <input id="loginEmail" type="email" autocomplete="email" required /></label>
         <label>Password <input id="loginPassword" type="password" autocomplete="current-password" required /></label>
@@ -854,13 +872,31 @@ const renderRoute = () => {
   return renderShell("Not found", "Unknown route.", null, `<section class="panel"><code>${route}</code></section>`);
 };
 
+const AUTH_BOOTSTRAP_TIMEOUT_MS = 8000;
+
 const bootstrapAuth = async () => {
-  const { data } = await supabase.auth.getSession();
-  state.session = data.session;
-  state.authReady = true;
+  try {
+    const sessionResult = await Promise.race([
+      supabase.auth.getSession(),
+      new Promise((_, reject) => setTimeout(() => reject(new Error("Session check timed out")), AUTH_BOOTSTRAP_TIMEOUT_MS)),
+    ]);
+
+    const { data, error } = sessionResult;
+    if (error) throw error;
+
+    state.session = data.session;
+    state.authError = null;
+  } catch (error) {
+    console.error("Auth bootstrap failed", error);
+    state.session = null;
+    state.authError = "We could not verify your Supabase session. Please check your Supabase URL/key and network, then try logging in.";
+  } finally {
+    state.authReady = true;
+  }
 
   supabase.auth.onAuthStateChange((_event, session) => {
     state.session = session;
+    state.authError = null;
     renderRoute();
   });
 };
