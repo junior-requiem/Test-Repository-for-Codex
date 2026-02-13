@@ -23,6 +23,15 @@ In `frontend/index.html`, define:
 
 The app fails fast at bootstrap with a clear UI error if required values are missing.
 
+## Auth gate toggle (for review/testing)
+You can enable/disable route auth gating without code changes:
+
+- URL query override: append `?authGate=off` (or `?authGate=on`) when loading the app.
+- Browser console helper: run `toggleAuthGate(false)` to disable and `toggleAuthGate(true)` to re-enable.
+- Runtime config: set `window.__APP_CONFIG__.AUTH_GATE_ENABLED = false` before app load.
+
+The selected value is persisted in `localStorage` under `learning-flow-auth-gate-enabled`.
+
 ## Routes
 | Screen | Route |
 | --- | --- |
