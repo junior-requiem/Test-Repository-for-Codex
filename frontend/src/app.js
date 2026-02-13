@@ -159,6 +159,22 @@ const saveCustomSections = () => {
   localStorage.setItem(CUSTOM_SECTIONS_KEY, JSON.stringify(customSections));
 };
 
+const toDisplayQuestion = (question) => ({
+  title: question.title || question.prompt || "Question",
+  body: question.body || "",
+  answerText: question.answerText || "",
+});
+
+const lessonQuestions = (lesson) => {
+  if (Array.isArray(lesson.questions) && lesson.questions.length) {
+    return lesson.questions.map(toDisplayQuestion);
+  }
+  if (lesson.question) {
+    return [toDisplayQuestion(lesson.question)];
+  }
+  return [];
+};
+
 const sections = () => [...baseSections, ...customSections];
 
 const lessons = () =>
@@ -184,6 +200,8 @@ const state = {
   session: null,
   authReady: false,
   authError: null,
+  developerSelectedLessonId: null,
+  developerQuestionIndex: 0,
 };
 
 const navEl = document.getElementById("nav");
@@ -577,9 +595,21 @@ const renderPractice = () => {
   }
 
   const progressValue = ((lessonIndex(lesson.id) + 1) / lessons().length) * 100;
-  const hasMultipleChoice = Array.isArray(lesson.question.options) && typeof lesson.question.answer === "number";
-  const questionTitle = lesson.question.title || lesson.question.prompt || "Question";
-  const questionBody = lesson.question.body || "";
+  const questionData = lesson.question || lessonQuestions(lesson)[0] || null;
+  const hasMultipleChoice = Boolean(questionData) && Array.isArray(questionData.options) && typeof questionData.answer === "number";
+  const questionTitle = questionData?.title || questionData?.prompt || "Question";
+  const questionBody = questionData?.body || "";
+
+  if (!questionData) {
+    renderShell(
+      "Question pending",
+      "This lesson is available, but no question has been added yet.",
+      `<button id="backPath" class="btn primary">Back to path</button>`,
+      `<section class="panel"><p>Use Developer Mode to add one or more questions to this lesson.</p></section>`,
+    );
+    document.getElementById("backPath").addEventListener("click", () => navigate("/skills"));
+    return;
+  }
 
   appEl.innerHTML = `
     <div class="focused-practice" aria-label="lesson focus view">
@@ -593,7 +623,7 @@ const renderPractice = () => {
         ${questionBody ? `<p class="question-body">${questionBody}</p>` : ""}
         ${
           hasMultipleChoice
-            ? `<div class="answer-grid">${lesson.question.options.map((option, i) => `<button class="btn answer" data-index="${i}">${option}</button>`).join("")}</div>
+            ? `<div class="answer-grid">${questionData.options.map((option, i) => `<button class="btn answer" data-index="${i}">${option}</button>`).join("")}</div>
                <p class="feedback" id="feedbackText">Choose one answer.</p>`
             : `<form id="textAnswerForm" class="text-answer-form">
                  <label>
@@ -657,7 +687,7 @@ const renderPractice = () => {
           streak: state.implementationStreak,
           mastery: masteryPercent(),
           learned: questionTitle,
-          correctAnswer: hasMultipleChoice ? lesson.question.options[lesson.question.answer] : lesson.question.answerText,
+          correctAnswer: hasMultipleChoice ? questionData.options[questionData.answer] : questionData.answerText,
         };
         moveToNextQuestion();
       });
@@ -687,8 +717,8 @@ const renderPractice = () => {
     buttons.forEach((button) => {
       button.addEventListener("click", () => {
         const selected = Number(button.dataset.index);
-        lockAnswers(buttons, selected, lesson.question.answer);
-        handleAttempt(selected === lesson.question.answer);
+        lockAnswers(buttons, selected, questionData.answer);
+        handleAttempt(selected === questionData.answer);
       });
     });
     return;
@@ -703,12 +733,34 @@ const renderPractice = () => {
     textAnswerForm.querySelector("button").disabled = true;
 
     const submitted = textAnswerInput.value.trim().toLowerCase();
-    const expected = (lesson.question.answerText || "").trim().toLowerCase();
+    const expected = (questionData.answerText || "").trim().toLowerCase();
     handleAttempt(submitted === expected);
   });
 };
 
 const renderDeveloper = () => {
+  const customLessons = customSections.flatMap((section) =>
+    section.lessons.map((lesson) => ({
+      lesson,
+      section,
+      questions: lessonQuestions(lesson),
+    })),
+  );
+
+  if (!customLessons.length) {
+    state.developerSelectedLessonId = null;
+    state.developerQuestionIndex = 0;
+  } else if (!customLessons.some((row) => row.lesson.id === state.developerSelectedLessonId)) {
+    state.developerSelectedLessonId = customLessons[0].lesson.id;
+    state.developerQuestionIndex = 0;
+  }
+
+  const selectedLessonRow = customLessons.find((row) => row.lesson.id === state.developerSelectedLessonId) || null;
+  const selectedQuestions = selectedLessonRow?.questions || [];
+  const safeQuestionIndex = selectedQuestions.length ? Math.min(state.developerQuestionIndex, selectedQuestions.length - 1) : 0;
+  state.developerQuestionIndex = safeQuestionIndex;
+  const selectedQuestion = selectedQuestions[safeQuestionIndex] || null;
+
   const unitRows = customSections
     .map(
       (section) => `
@@ -725,9 +777,59 @@ const renderDeveloper = () => {
     .map((section) => `<option value="${section.id}">${section.title} — ${section.subtitle}</option>`)
     .join("");
 
+  const lessonOptions = customLessons
+    .map(
+      (row) =>
+        `<option value="${row.lesson.id}" ${row.lesson.id === state.developerSelectedLessonId ? "selected" : ""}>${row.section.title} • ${row.lesson.title}</option>`,
+    )
+    .join("");
+
+  const questionPreview = selectedLessonRow
+    ? `
+      <div class="developer-preview-head">
+        <div>
+          <p class="developer-preview-kicker">Previewing lesson</p>
+          <h4>${selectedLessonRow.lesson.title}</h4>
+          <p>${selectedLessonRow.lesson.description}</p>
+        </div>
+        <span class="developer-preview-count">${selectedQuestions.length} question(s)</span>
+      </div>
+      ${
+        selectedQuestion
+          ? `
+            <div class="panel lesson-panel developer-preview-card" aria-label="question preview">
+              <p class="lesson-kicker">${selectedLessonRow.section.subtitle} • +${selectedLessonRow.lesson.fusionPoints} Fusion Points</p>
+              <h3>${selectedQuestion.title}</h3>
+              ${selectedQuestion.body ? `<p class="question-body">${selectedQuestion.body}</p>` : ""}
+              <p class="feedback ok">Answer: ${selectedQuestion.answerText}</p>
+            </div>
+            <div class="developer-preview-controls">
+              <button class="btn" id="previewPrev" ${safeQuestionIndex === 0 ? "disabled" : ""}>Previous</button>
+              <span>Question ${safeQuestionIndex + 1} of ${selectedQuestions.length}</span>
+              <button class="btn" id="previewNext" ${safeQuestionIndex >= selectedQuestions.length - 1 ? "disabled" : ""}>Next</button>
+            </div>
+          `
+          : '<p class="empty-state">No questions yet for this lesson. Add one below.</p>'
+      }
+    `
+    : '<p class="empty-state">Create a lesson to start adding questions.</p>';
+
+  const questionRows = selectedQuestions
+    .map(
+      (question, index) => `
+      <li>
+        <button class="developer-question-jump ${index === safeQuestionIndex ? "active" : ""}" data-question-index="${index}">
+          <strong>Question ${index + 1}</strong>
+          <small>${question.title}</small>
+        </button>
+      </li>
+    `,
+    )
+    .join("");
+
   renderShell(
     "Developer Mode",
-    "No-code builder for custom units, lessons, and text-based questions.",
+    "No-code builder for custom units, lessons, and multi-question lesson previews.",
     null,
     `
       <section class="panel developer-grid">
@@ -741,7 +843,7 @@ const renderDeveloper = () => {
         </article>
 
         <article>
-          <h3>Create Lesson + Question</h3>
+          <h3>Create Lesson</h3>
           <form id="lessonBuilderForm" class="developer-form">
             <label>Unit
               <select name="sectionId" ${customSections.length ? "" : "disabled"} required>
@@ -750,12 +852,34 @@ const renderDeveloper = () => {
             </label>
             <label>Lesson title <input name="lessonTitle" required placeholder="Data roles" /></label>
             <label>Lesson description <input name="lessonDescription" required placeholder="Who owns workforce metrics" /></label>
-            <label>Question title <input name="questionTitle" required placeholder="Who owns attrition dashboard governance?" /></label>
-            <label>Question body <textarea name="questionBody" rows="3" required placeholder="Describe the operating model expectation."></textarea></label>
-            <label>Correct answer <input name="correctAnswer" required placeholder="HR analytics lead" /></label>
             <button class="btn primary" type="submit" ${customSections.length ? "" : "disabled"}>Add lesson</button>
           </form>
         </article>
+
+        <article>
+          <h3>Add Question</h3>
+          <form id="questionBuilderForm" class="developer-form">
+            <label>Lesson
+              <select name="lessonId" ${customLessons.length ? "" : "disabled"} required>
+                ${lessonOptions || '<option value="">Create a lesson first</option>'}
+              </select>
+            </label>
+            <label>Question title <input name="questionTitle" required placeholder="Who owns attrition dashboard governance?" /></label>
+            <label>Question body <textarea name="questionBody" rows="3" required placeholder="Describe the operating model expectation."></textarea></label>
+            <label>Correct answer <input name="correctAnswer" required placeholder="HR analytics lead" /></label>
+            <button class="btn primary" type="submit" ${customLessons.length ? "" : "disabled"}>Add question</button>
+          </form>
+        </article>
+      </section>
+
+      <section class="panel">
+        <h3>Question builder preview</h3>
+        ${questionPreview}
+      </section>
+
+      <section class="panel">
+        <h3>Current questions</h3>
+        ${questionRows ? `<ul class="developer-unit-list developer-question-list">${questionRows}</ul>` : '<p class="empty-state">Questions for the selected lesson will appear here.</p>'}
       </section>
 
       <section class="panel">
@@ -797,27 +921,95 @@ const renderDeveloper = () => {
 
     const lessonTitle = form.lessonTitle.value.trim();
     const lessonDescription = form.lessonDescription.value.trim();
+    if (!lessonTitle || !lessonDescription) return;
+
+    const lessonId = `custom-lesson-${Date.now()}`;
+
+    section.lessons.push({
+      id: lessonId,
+      title: lessonTitle,
+      description: lessonDescription,
+      fusionPoints: 20,
+      questions: [],
+    });
+
+    state.developerSelectedLessonId = lessonId;
+    state.developerQuestionIndex = 0;
+    saveCustomSections();
+    form.reset();
+    renderDeveloper();
+  });
+
+  const questionBuilderForm = document.getElementById("questionBuilderForm");
+  questionBuilderForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const lessonId = form.lessonId.value;
+    const customLesson = customSections
+      .flatMap((section) => section.lessons)
+      .find((lesson) => lesson.id === lessonId);
+    if (!customLesson) return;
+
     const questionTitle = form.questionTitle.value.trim();
     const questionBody = form.questionBody.value.trim();
     const correctAnswer = form.correctAnswer.value.trim();
 
-    if (!lessonTitle || !lessonDescription || !questionTitle || !questionBody || !correctAnswer) return;
+    if (!questionTitle || !questionBody || !correctAnswer) return;
 
-    section.lessons.push({
-      id: `custom-lesson-${Date.now()}`,
-      title: lessonTitle,
-      description: lessonDescription,
-      fusionPoints: 20,
-      question: {
+    if (!Array.isArray(customLesson.questions)) {
+      customLesson.questions = lessonQuestions(customLesson);
+    }
+
+    customLesson.questions.push({
+      title: questionTitle,
+      body: questionBody,
+      answerText: correctAnswer,
+    });
+
+    if (!customLesson.question) {
+      customLesson.question = {
         title: questionTitle,
         body: questionBody,
         answerText: correctAnswer,
-      },
-    });
+      };
+    }
 
+    state.developerSelectedLessonId = customLesson.id;
+    state.developerQuestionIndex = customLesson.questions.length - 1;
     saveCustomSections();
     form.reset();
     renderDeveloper();
+  });
+
+  const questionLessonSelect = questionBuilderForm.querySelector('select[name="lessonId"]');
+  questionLessonSelect?.addEventListener("change", (event) => {
+    state.developerSelectedLessonId = event.target.value;
+    state.developerQuestionIndex = 0;
+    renderDeveloper();
+  });
+
+  const previewPrev = document.getElementById("previewPrev");
+  const previewNext = document.getElementById("previewNext");
+
+  if (previewPrev) {
+    previewPrev.addEventListener("click", () => {
+      state.developerQuestionIndex = Math.max(0, state.developerQuestionIndex - 1);
+      renderDeveloper();
+    });
+  }
+
+  if (previewNext) {
+    previewNext.addEventListener("click", () => {
+      state.developerQuestionIndex += 1;
+      renderDeveloper();
+    });
+  }
+
+  appEl.querySelectorAll("[data-question-index]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.developerQuestionIndex = Number(button.dataset.questionIndex);
+      renderDeveloper();
+    });
   });
 };
 
