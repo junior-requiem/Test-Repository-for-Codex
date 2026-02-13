@@ -52,6 +52,38 @@ if (supabaseConfig.missing.length) {
 
 const supabase = createClient(supabaseConfig.supabaseUrl, supabaseConfig.supabaseAnonKey);
 
+const AUTH_GATE_STORAGE_KEY = "learning-flow-auth-gate-enabled";
+
+const parseBooleanSetting = (value) => {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") return value !== 0;
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().toLowerCase();
+  if (["1", "true", "on", "yes", "enabled"].includes(normalized)) return true;
+  if (["0", "false", "off", "no", "disabled"].includes(normalized)) return false;
+  return null;
+};
+
+const readAuthGateEnabled = () => {
+  const runtimeConfig = window.__APP_CONFIG__ ?? {};
+  const runtimeValue = parseBooleanSetting(runtimeConfig.AUTH_GATE_ENABLED ?? runtimeConfig.DISABLE_AUTH_GATE);
+  if (typeof runtimeValue === "boolean") {
+    return runtimeConfig.DISABLE_AUTH_GATE ? !runtimeValue : runtimeValue;
+  }
+
+  const urlSetting = new URLSearchParams(window.location.search).get("authGate");
+  const parsedUrlSetting = parseBooleanSetting(urlSetting);
+  if (typeof parsedUrlSetting === "boolean") {
+    localStorage.setItem(AUTH_GATE_STORAGE_KEY, String(parsedUrlSetting));
+    return parsedUrlSetting;
+  }
+
+  const storedSetting = parseBooleanSetting(localStorage.getItem(AUTH_GATE_STORAGE_KEY));
+  if (typeof storedSetting === "boolean") return storedSetting;
+
+  return true;
+};
+
 const routes = [
   { name: "Home", path: "/" },
   { name: "Learn", path: "/skills", requiresAuth: true },
@@ -160,6 +192,7 @@ const saveCustomSections = () => {
 };
 
 const toDisplayQuestion = (question) => ({
+  type: question.type || "question",
   title: question.title || question.prompt || "Question",
   body: question.body || "",
   answerText: question.answerText || "",
@@ -202,6 +235,7 @@ const state = {
   authError: null,
   developerSelectedLessonId: null,
   developerQuestionIndex: 0,
+  authGateEnabled: readAuthGateEnabled(),
 };
 
 const navEl = document.getElementById("nav");
@@ -274,6 +308,7 @@ const navigate = (path) => {
 };
 
 const isAuthenticated = () => Boolean(state.session);
+const isAuthGateEnabled = () => state.authGateEnabled !== false;
 
 const isFocusedRoute = (route = getPath()) => route === "/practice" || route === "/lesson-complete";
 
@@ -337,8 +372,8 @@ const renderNav = () => {
   const current = getPath();
   navEl.innerHTML = routes
     .filter((route) => {
-      if (route.requiresAuth && !isAuthenticated()) return false;
-      if (route.authOnly && isAuthenticated()) return false;
+      if (isAuthGateEnabled() && route.requiresAuth && !isAuthenticated()) return false;
+      if (isAuthGateEnabled() && route.authOnly && isAuthenticated()) return false;
       return true;
     })
     .map((route) => `<button class="nav-pill ${current === route.path ? "active" : ""}" data-route="${route.path}">${route.name}</button>`)
@@ -596,6 +631,7 @@ const renderPractice = () => {
 
   const progressValue = ((lessonIndex(lesson.id) + 1) / lessons().length) * 100;
   const questionData = lesson.question || lessonQuestions(lesson)[0] || null;
+  const isInformativeStep = questionData?.type === "informative";
   const hasMultipleChoice = Boolean(questionData) && Array.isArray(questionData.options) && typeof questionData.answer === "number";
   const questionTitle = questionData?.title || questionData?.prompt || "Question";
   const questionBody = questionData?.body || "";
@@ -622,6 +658,10 @@ const renderPractice = () => {
         <h3>${questionTitle}</h3>
         ${questionBody ? `<p class="question-body">${questionBody}</p>` : ""}
         ${
+          isInformativeStep
+            ? `<button class="btn primary" id="completeInformativeStep">Continue</button>
+               <p class="feedback" id="feedbackText">Review this information, then continue.</p>`
+            :
           hasMultipleChoice
             ? `<div class="answer-grid">${questionData.options.map((option, i) => `<button class="btn answer" data-index="${i}">${option}</button>`).join("")}</div>
                <p class="feedback" id="feedbackText">Choose one answer.</p>`
@@ -687,7 +727,11 @@ const renderPractice = () => {
           streak: state.implementationStreak,
           mastery: masteryPercent(),
           learned: questionTitle,
-          correctAnswer: hasMultipleChoice ? questionData.options[questionData.answer] : questionData.answerText,
+          correctAnswer: isInformativeStep
+            ? "Informative step completed"
+            : hasMultipleChoice
+              ? questionData.options[questionData.answer]
+              : questionData.answerText,
         };
         moveToNextQuestion();
       });
@@ -720,6 +764,13 @@ const renderPractice = () => {
         lockAnswers(buttons, selected, questionData.answer);
         handleAttempt(selected === questionData.answer);
       });
+    });
+    return;
+  }
+
+  if (isInformativeStep) {
+    document.getElementById("completeInformativeStep")?.addEventListener("click", () => {
+      handleAttempt(true);
     });
     return;
   }
@@ -801,7 +852,11 @@ const renderDeveloper = () => {
               <p class="lesson-kicker">${selectedLessonRow.section.subtitle} • +${selectedLessonRow.lesson.fusionPoints} Fusion Points</p>
               <h3>${selectedQuestion.title}</h3>
               ${selectedQuestion.body ? `<p class="question-body">${selectedQuestion.body}</p>` : ""}
-              <p class="feedback ok">Answer: ${selectedQuestion.answerText}</p>
+              ${
+                selectedQuestion.type === "informative"
+                  ? '<p class="feedback ok">Informative step</p>'
+                  : `<p class="feedback ok">Answer: ${selectedQuestion.answerText}</p>`
+              }
             </div>
             <div class="developer-preview-controls">
               <button class="btn" id="previewPrev" ${safeQuestionIndex === 0 ? "disabled" : ""}>Previous</button>
@@ -864,9 +919,15 @@ const renderDeveloper = () => {
                 ${lessonOptions || '<option value="">Create a lesson first</option>'}
               </select>
             </label>
+            <label>Content type
+              <select name="questionType" ${customLessons.length ? "" : "disabled"}>
+                <option value="question">Question</option>
+                <option value="informative">Informative step</option>
+              </select>
+            </label>
             <label>Question title <input name="questionTitle" required placeholder="Who owns attrition dashboard governance?" /></label>
             <label>Question body <textarea name="questionBody" rows="3" required placeholder="Describe the operating model expectation."></textarea></label>
-            <label>Correct answer <input name="correctAnswer" required placeholder="HR analytics lead" /></label>
+            <label>Correct answer <input name="correctAnswer" placeholder="HR analytics lead" /></label>
             <button class="btn primary" type="submit" ${customLessons.length ? "" : "disabled"}>Add question</button>
           </form>
         </article>
@@ -952,26 +1013,34 @@ const renderDeveloper = () => {
 
     const questionTitle = form.questionTitle.value.trim();
     const questionBody = form.questionBody.value.trim();
+    const questionType = form.questionType.value;
     const correctAnswer = form.correctAnswer.value.trim();
 
-    if (!questionTitle || !questionBody || !correctAnswer) return;
+    if (!questionTitle || !questionBody) return;
+    if (questionType !== "informative" && !correctAnswer) return;
 
     if (!Array.isArray(customLesson.questions)) {
       customLesson.questions = lessonQuestions(customLesson);
     }
 
-    customLesson.questions.push({
-      title: questionTitle,
-      body: questionBody,
-      answerText: correctAnswer,
-    });
+    const questionEntry =
+      questionType === "informative"
+        ? {
+            type: "informative",
+            title: questionTitle,
+            body: questionBody,
+          }
+        : {
+            type: "question",
+            title: questionTitle,
+            body: questionBody,
+            answerText: correctAnswer,
+          };
+
+    customLesson.questions.push(questionEntry);
 
     if (!customLesson.question) {
-      customLesson.question = {
-        title: questionTitle,
-        body: questionBody,
-        answerText: correctAnswer,
-      };
+      customLesson.question = questionEntry;
     }
 
     state.developerSelectedLessonId = customLesson.id;
@@ -1120,7 +1189,7 @@ const renderProfile = () => {
 
   document.getElementById("logoutAction").addEventListener("click", async () => {
     await supabase.auth.signOut();
-    navigate("/login");
+    navigate(isAuthGateEnabled() ? "/login" : "/");
   });
 };
 
@@ -1133,12 +1202,12 @@ const renderRoute = () => {
   syncRouteChrome();
   const route = getPath();
 
-  if (AUTH_REQUIRED_ROUTES.has(route) && !isAuthenticated()) {
+  if (isAuthGateEnabled() && AUTH_REQUIRED_ROUTES.has(route) && !isAuthenticated()) {
     navigate("/login");
     return;
   }
 
-  if (AUTH_ONLY_ROUTES.has(route) && isAuthenticated()) {
+  if (isAuthGateEnabled() && AUTH_ONLY_ROUTES.has(route) && isAuthenticated()) {
     navigate("/");
     return;
   }
@@ -1188,6 +1257,19 @@ const bootstrapAuth = async () => {
 
 window.addEventListener("hashchange", renderRoute);
 window.addEventListener("load", async () => {
+  window.toggleAuthGate = (enabled) => {
+    const resolvedValue = parseBooleanSetting(enabled);
+    if (typeof resolvedValue !== "boolean") {
+      console.warn("toggleAuthGate expects true/false");
+      return state.authGateEnabled;
+    }
+
+    state.authGateEnabled = resolvedValue;
+    localStorage.setItem(AUTH_GATE_STORAGE_KEY, String(resolvedValue));
+    renderRoute();
+    return resolvedValue;
+  };
+
   if (!location.hash) navigate("/");
   await bootstrapAuth();
   renderRoute();
