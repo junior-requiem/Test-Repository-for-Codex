@@ -190,12 +190,68 @@ const navEl = document.getElementById("nav");
 const appEl = document.getElementById("app");
 const topbarEl = document.querySelector(".topbar");
 
+let audioContext;
+
+const getAudioContext = () => {
+  if (!window.AudioContext && !window.webkitAudioContext) return null;
+  if (!audioContext) {
+    const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+    audioContext = new AudioContextCtor();
+  }
+  if (audioContext.state === "suspended") {
+    audioContext.resume().catch(() => {});
+  }
+  return audioContext;
+};
+
+const playTone = ({ frequency, type = "sine", duration = 0.12, gain = 0.06 }) => {
+  const context = getAudioContext();
+  if (!context) return;
+
+  const now = context.currentTime;
+  const oscillator = context.createOscillator();
+  const gainNode = context.createGain();
+
+  oscillator.type = type;
+  oscillator.frequency.setValueAtTime(frequency, now);
+
+  gainNode.gain.setValueAtTime(0.0001, now);
+  gainNode.gain.exponentialRampToValueAtTime(gain, now + 0.01);
+  gainNode.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+
+  oscillator.connect(gainNode);
+  gainNode.connect(context.destination);
+
+  oscillator.start(now);
+  oscillator.stop(now + duration + 0.02);
+};
+
+const playRightSound = () => {
+  playTone({ frequency: 720, type: "triangle", duration: 0.1, gain: 0.04 });
+  setTimeout(() => playTone({ frequency: 940, type: "triangle", duration: 0.12, gain: 0.05 }), 65);
+};
+
+const playWrongSound = () => {
+  playTone({ frequency: 240, type: "sawtooth", duration: 0.12, gain: 0.04 });
+  setTimeout(() => playTone({ frequency: 170, type: "sawtooth", duration: 0.14, gain: 0.03 }), 60);
+};
+
+const playNavigationClick = () => {
+  playTone({ frequency: 460, type: "square", duration: 0.045, gain: 0.025 });
+};
+
+const vibrateFeedback = (pattern) => {
+  if (typeof navigator.vibrate !== "function") return;
+  navigator.vibrate(pattern);
+};
+
 const getPath = () => {
   const hash = location.hash.replace(/^#/, "") || "/";
   return hash.startsWith("/") ? hash : `/${hash}`;
 };
 
 const navigate = (path) => {
+  if (getPath() !== path) playNavigationClick();
   location.hash = path;
 };
 
@@ -574,6 +630,8 @@ const renderPractice = () => {
     };
 
     if (correct) {
+      playRightSound();
+      vibrateFeedback(35);
       panel.classList.add("celebrate");
       spawnConfetti();
       feedback.textContent = "Nice work!";
@@ -604,6 +662,8 @@ const renderPractice = () => {
         moveToNextQuestion();
       });
     } else {
+      playWrongSound();
+      vibrateFeedback([35, 40, 35]);
       panel.classList.add("shake");
       feedback.textContent = "Not quite. Try again.";
       feedback.classList.remove("ok");
