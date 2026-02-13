@@ -211,6 +211,12 @@ const syncRouteChrome = () => {
 
 const findLesson = (id) => lessons().find((lesson) => lesson.id === id) ?? lessons()[0];
 const lessonIndex = (id) => lessons().findIndex((lesson) => lesson.id === id);
+const nextLessonId = (id) => {
+  const orderedLessons = lessons();
+  const idx = lessonIndex(id);
+  if (idx < 0 || idx + 1 >= orderedLessons.length) return null;
+  return orderedLessons[idx + 1].id;
+};
 
 const nextLevelTarget = () => state.level * 120;
 const addFusionPoints = (value) => {
@@ -553,6 +559,19 @@ const renderPractice = () => {
     const panel = document.getElementById("lessonPanel");
     const feedback = document.getElementById("feedbackText");
     const continueWrap = document.getElementById("continueWrap");
+    const moveToNextQuestion = () => {
+      const upcomingLessonId = nextLessonId(lesson.id);
+      if (!upcomingLessonId) {
+        navigate("/skills");
+        return;
+      }
+      state.selectedLessonId = upcomingLessonId;
+      if (getPath() === "/practice") {
+        renderPractice();
+        return;
+      }
+      navigate("/practice");
+    };
 
     if (correct) {
       panel.classList.add("celebrate");
@@ -565,7 +584,13 @@ const renderPractice = () => {
         addFusionPoints(lesson.fusionPoints);
       }
       continueWrap.className = "feedback-dock success";
-      continueWrap.innerHTML = `<button class="btn primary" id="continueLesson">Continue</button>`;
+      continueWrap.innerHTML = `
+        <div>
+          <strong>✅ Correct!</strong>
+          <p>You got this one right. Move on when you're ready.</p>
+        </div>
+        <button class="btn primary" id="continueLesson">Next question</button>
+      `;
       document.getElementById("continueLesson").addEventListener("click", () => {
         state.lastCompletion = {
           title: lesson.title,
@@ -576,15 +601,23 @@ const renderPractice = () => {
           learned: questionTitle,
           correctAnswer: hasMultipleChoice ? lesson.question.options[lesson.question.answer] : lesson.question.answerText,
         };
-        navigate("/lesson-complete");
+        moveToNextQuestion();
       });
     } else {
       panel.classList.add("shake");
       feedback.textContent = "Not quite. Try again.";
       feedback.classList.remove("ok");
       state.hearts = Math.max(0, state.hearts - 1);
+      if (!state.completed.includes(lesson.id)) state.completed.push(lesson.id);
       continueWrap.className = "feedback-dock error";
-      continueWrap.innerHTML = `<p>Heart lost. Remaining hearts: ${state.hearts}</p>`;
+      continueWrap.innerHTML = `
+        <div>
+          <strong>❌ Incorrect.</strong>
+          <p>Heart lost. Remaining hearts: ${state.hearts}</p>
+        </div>
+        <button class="btn primary" id="nextAfterMiss">Next question</button>
+      `;
+      document.getElementById("nextAfterMiss").addEventListener("click", moveToNextQuestion);
       setTimeout(() => panel.classList.remove("shake"), 400);
     }
   };
