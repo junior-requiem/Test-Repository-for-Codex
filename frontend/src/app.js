@@ -370,7 +370,7 @@ const reviewQueue = () => {
 
 const renderNav = () => {
   const current = getPath();
-  navEl.innerHTML = routes
+  const navButtons = routes
     .filter((route) => {
       if (isAuthGateEnabled() && route.requiresAuth && !isAuthenticated()) return false;
       if (isAuthGateEnabled() && route.authOnly && isAuthenticated()) return false;
@@ -378,6 +378,16 @@ const renderNav = () => {
     })
     .map((route) => `<button class="nav-pill ${current === route.path ? "active" : ""}" data-route="${route.path}">${route.name}</button>`)
     .join("");
+
+  navEl.innerHTML = `
+    <div class="hud-strip" aria-label="learning stats">
+      <span class="hud-pill streak">🔥 ${state.implementationStreak}</span>
+      <span class="hud-pill points">⚡ ${state.fusionPoints}</span>
+      <span class="hud-pill hearts">💗 ${state.hearts}</span>
+      <span class="hud-pill level">⭐ L${state.level}</span>
+    </div>
+    <div class="nav-pills-wrap">${navButtons}</div>
+  `;
 
   navEl.querySelectorAll("[data-route]").forEach((btn) => {
     btn.addEventListener("click", () => navigate(btn.dataset.route));
@@ -389,7 +399,7 @@ const renderRightRail = () => {
   return `
     <aside class="right-rail" aria-label="progress sidebar">
       <section class="panel rail-card">
-        <h3>Progress</h3>
+        <h3>Today</h3>
         <div class="metric-list">
           <span>⚡ ${state.fusionPoints} Fusion Points</span>
           <span>🔥 ${state.implementationStreak} day streak</span>
@@ -397,7 +407,7 @@ const renderRightRail = () => {
         </div>
       </section>
       <section class="panel rail-card">
-        <h3>Quests</h3>
+        <h3>Daily quests</h3>
         ${items
           .map((item) => {
             const done = item.value >= 1;
@@ -432,9 +442,9 @@ const renderShell = (title, subtitle, primaryAction, body) => {
 
 const renderHome = () => {
   renderShell(
-    "Learning Flow",
-    "Interactive onboarding, learning, and review experience.",
-    `<button id="openPath" class="btn primary">Continue Learning</button>`,
+    "Daily Learning Path",
+    "Build consistency with short sessions, XP rewards, and streak-driven progression.",
+    `<button id="openPath" class="btn primary">Start today's lesson</button>`,
     `
       <section class="stats-grid">
         <article class="panel stat"><span></span><strong>Level    ${state.level}</strong></article>
@@ -443,6 +453,7 @@ const renderHome = () => {
       <section class="panel">
         <h3>Current track</h3>
         <p>Core HR Foundations → Payroll & Talent</p>
+        <p><strong>Daily goal:</strong> Complete 1 lesson to keep your streak alive.</p>
       </section>
     `,
   );
@@ -540,6 +551,45 @@ const renderRegister = () => {
   document.getElementById("goLogin").addEventListener("click", () => navigate("/login"));
 };
 
+const lessonNodeIcon = (status) => {
+  if (status === "done") {
+    return `
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path d="M9.4 16.6 5.8 13l1.4-1.4 2.2 2.2 7.4-7.4 1.4 1.4z"></path>
+      </svg>
+    `;
+  }
+  if (status === "current") {
+    return `
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path d="m12 3.3 2.5 5.1 5.6.8-4 3.9.9 5.6-5-2.6-5 2.6.9-5.6-4-3.9 5.6-.8z"></path>
+      </svg>
+    `;
+  }
+  return `
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path d="M17 10h-1V8a4 4 0 1 0-8 0v2H7a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7a2 2 0 0 0-2-2m-7-2a2 2 0 1 1 4 0v2h-4z"></path>
+    </svg>
+  `;
+};
+
+const feedbackIcon = (type) => {
+  if (type === "success") {
+    return `
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <circle cx="12" cy="12" r="10"></circle>
+        <path d="M10.1 15.7 6.9 12.5l1.4-1.4 1.8 1.8 5.6-5.6 1.4 1.4z"></path>
+      </svg>
+    `;
+  }
+  return `
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <circle cx="12" cy="12" r="10"></circle>
+      <path d="m8.5 8.5 7 7m0-7-7 7"></path>
+    </svg>
+  `;
+};
+
 const renderSectionHeader = (section) => `
   <div class="section-banner ${section.color}">
     <div>
@@ -552,11 +602,12 @@ const renderSectionHeader = (section) => `
 const renderNode = (lesson, index) => {
   const side = index % 2 === 0 ? "left" : "right";
   const status = statusForLesson(lesson.id);
-  const symbol = status === "done" ? "✓" : status === "current" ? "★" : "🔒";
   return `
     <div class="path-row ${side}">
       <div class="path-rail ${index === 0 ? "hidden" : ""}"></div>
-      <button class="lesson-node ${status}" data-lesson-id="${lesson.id}" ${status === "locked" ? "disabled" : ""} aria-label="${lesson.title}">${symbol}</button>
+      <button class="lesson-node ${status}" data-lesson-id="${lesson.id}" ${status === "locked" ? "disabled" : ""} aria-label="${lesson.title}">
+        <span class="lesson-node-icon" aria-hidden="true">${lessonNodeIcon(status)}</span>
+      </button>
       <div class="node-caption ${status}">
         <strong>${lesson.title}</strong>
         <small>${lesson.description}</small>
@@ -675,7 +726,7 @@ const renderPractice = () => {
                <p class="feedback" id="feedbackText">Enter the correct answer exactly.</p>`
         }
       </section>
-      <section class="feedback-dock" id="continueWrap"></section>
+      <section class="feedback-dock" id="continueWrap" aria-live="polite"></section>
     </div>
   `;
 
@@ -711,11 +762,14 @@ const renderPractice = () => {
         state.completed.push(lesson.id);
         addFusionPoints(lesson.fusionPoints);
       }
-      continueWrap.className = "feedback-dock success";
+      continueWrap.className = "feedback-dock success pop-in";
       continueWrap.innerHTML = `
-        <div>
-          <strong>✅ Correct!</strong>
-          <p>You got this one right. Move on when you're ready.</p>
+        <div class="feedback-main">
+          <div class="feedback-icon success" aria-hidden="true">${feedbackIcon("success")}</div>
+          <div>
+            <strong>Correct!</strong>
+            <p>Great job — keep the streak rolling.</p>
+          </div>
         </div>
         <button class="btn primary" id="continueLesson">Next question</button>
       `;
@@ -743,11 +797,14 @@ const renderPractice = () => {
       feedback.classList.remove("ok");
       state.hearts = Math.max(0, state.hearts - 1);
       if (!state.completed.includes(lesson.id)) state.completed.push(lesson.id);
-      continueWrap.className = "feedback-dock error";
+      continueWrap.className = "feedback-dock error pop-in";
       continueWrap.innerHTML = `
-        <div>
-          <strong>❌ Incorrect.</strong>
-          <p>Heart lost. Remaining hearts: ${state.hearts}</p>
+        <div class="feedback-main">
+          <div class="feedback-icon error" aria-hidden="true">${feedbackIcon("error")}</div>
+          <div>
+            <strong>Incorrect.</strong>
+            <p>Heart lost. Remaining hearts: ${state.hearts}</p>
+          </div>
         </div>
         <button class="btn primary" id="nextAfterMiss">Next question</button>
       `;
