@@ -415,12 +415,6 @@ const playNavigationClick = () => {
   playTone({ frequency: 460, type: "square", duration: 0.045, gain: 0.025 });
 };
 
-const playRewardSound = () => {
-  playTone({ frequency: 640, type: "triangle", duration: 0.1, gain: 0.05 });
-  setTimeout(() => playTone({ frequency: 820, type: "triangle", duration: 0.1, gain: 0.05 }), 80);
-  setTimeout(() => playTone({ frequency: 1040, type: "triangle", duration: 0.14, gain: 0.06 }), 160);
-};
-
 const vibrateFeedback = (pattern) => {
   if (typeof navigator.vibrate !== "function") return;
   navigator.vibrate(pattern);
@@ -931,7 +925,6 @@ const renderPractice = () => {
         <div class="bar"><span style="width:${Math.round(progressValue)}%"></span></div>
       </section>
       <section class="panel lesson-panel" id="lessonPanel">
-        <p class="lesson-kicker">🏁 Lesson start</p>
         <p class="lesson-kicker">${lesson.sectionSubtitle} • +${lesson.fusionPoints} Fusion Points</p>
         <h3>${questionTitle}</h3>
         ${questionBody ? `<p class="question-body">${questionBody}</p>` : ""}
@@ -965,22 +958,16 @@ const renderPractice = () => {
     const continueWrap = document.getElementById("continueWrap");
     const moveToNextQuestion = () => {
       const upcomingLessonId = nextLessonId(lesson.id);
-      state.lastCompletion = {
-        title: lesson.title,
-        sectionSubtitle: lesson.sectionSubtitle,
-        fusionPoints: lesson.fusionPoints,
-        streak: state.implementationStreak,
-        mastery: masteryPercent(),
-        learned: questionTitle,
-        correctAnswer: isInformativeStep
-          ? "Informative step completed"
-          : hasMultipleChoice
-            ? questionData.options[questionData.answer]
-            : questionData.answerText,
-        nextLessonId: upcomingLessonId,
-      };
-      if (upcomingLessonId) state.selectedLessonId = upcomingLessonId;
-      navigate("/lesson-complete");
+      if (!upcomingLessonId) {
+        navigate("/skills");
+        return;
+      }
+      state.selectedLessonId = upcomingLessonId;
+      if (getPath() === "/practice") {
+        renderPractice();
+        return;
+      }
+      navigate("/practice");
     };
 
     if (correct) {
@@ -999,11 +986,26 @@ const renderPractice = () => {
       continueWrap.innerHTML = `
         <div>
           <strong>✅ Correct!</strong>
-          <p>You got this one right. Finish this lesson when you're ready.</p>
+          <p>You got this one right. Move on when you're ready.</p>
         </div>
-        <button class="btn primary" id="continueLesson">Finish lesson</button>
+        <button class="btn primary" id="continueLesson">Next question</button>
       `;
-      document.getElementById("continueLesson").addEventListener("click", moveToNextQuestion);
+      document.getElementById("continueLesson").addEventListener("click", () => {
+        state.lastCompletion = {
+          title: lesson.title,
+          sectionSubtitle: lesson.sectionSubtitle,
+          fusionPoints: lesson.fusionPoints,
+          streak: state.implementationStreak,
+          mastery: masteryPercent(),
+          learned: questionTitle,
+          correctAnswer: isInformativeStep
+            ? "Informative step completed"
+            : hasMultipleChoice
+              ? questionData.options[questionData.answer]
+              : questionData.answerText,
+        };
+        moveToNextQuestion();
+      });
     } else {
       playWrongSound();
       vibrateFeedback([35, 40, 35]);
@@ -1016,9 +1018,9 @@ const renderPractice = () => {
       continueWrap.innerHTML = `
         <div>
           <strong>❌ Incorrect.</strong>
-          <p>Heart lost. Remaining hearts: ${state.hearts}. Finish lesson to continue.</p>
+          <p>Heart lost. Remaining hearts: ${state.hearts}</p>
         </div>
-        <button class="btn primary" id="nextAfterMiss">Finish lesson</button>
+        <button class="btn primary" id="nextAfterMiss">Next question</button>
       `;
       document.getElementById("nextAfterMiss").addEventListener("click", moveToNextQuestion);
       setTimeout(() => panel.classList.remove("shake"), 400);
@@ -1499,7 +1501,7 @@ const renderLessonComplete = () => {
         </section>
 
         <div class="completion-cta">
-          <p>Lesson complete. Choose where to go next.</p>
+          <p>Returning to your learning map for the next lesson...</p>
           <button id="backToMap" class="btn primary">Continue to Learning Map</button>
         </div>
       </section>
@@ -1508,7 +1510,6 @@ const renderLessonComplete = () => {
 
   const panel = document.getElementById("completionPanel");
   panel.classList.add("celebrate");
-  playRewardSound();
   for (let i = 0; i < 2; i += 1) setTimeout(spawnConfetti, i * 220);
 
   const goToMap = () => {
@@ -1516,21 +1517,10 @@ const renderLessonComplete = () => {
     navigate("/skills");
   };
 
-  const goToNextLesson = () => {
-    state.lastCompletion = null;
-    navigate("/practice");
-  };
-
-  const backToMapButton = document.getElementById("backToMap");
-  const nextLessonId = completion.nextLessonId;
-
-  if (nextLessonId) {
-    backToMapButton.textContent = "Start Next Lesson";
-    backToMapButton.addEventListener("click", goToNextLesson);
-  } else {
-    backToMapButton.textContent = "Continue to Learning Map";
-    backToMapButton.addEventListener("click", goToMap);
-  }
+  document.getElementById("backToMap").addEventListener("click", goToMap);
+  setTimeout(() => {
+    if (getPath() === "/lesson-complete") goToMap();
+  }, 4500);
 };
 
 const renderReview = () => {
@@ -1550,7 +1540,6 @@ const renderReview = () => {
 
   document.getElementById("reviewReward").addEventListener("click", () => {
     addFusionPoints(10);
-    playRewardSound();
     const button = document.getElementById("reviewReward");
     button.textContent = "Completed";
     button.disabled = true;
