@@ -848,7 +848,10 @@ const renderProcessOverview = () => {
       ? activeStep.options
           .map((option, index) => {
             const isPicked = selectedAnswer === index;
-            return `<button class="btn overview-answer ${isPicked ? "selected" : ""}" data-overview-answer="${index}">${option}</button>`;
+            const isCorrectOption = selectedAnswer !== undefined && index === activeStep.answer;
+            const isWrongPicked = isPicked && selectedAnswer !== activeStep.answer;
+            const stateClass = isCorrectOption ? "correct" : isWrongPicked ? "wrong" : isPicked ? "selected" : "";
+            return `<button class="btn overview-answer ${stateClass}" data-overview-answer="${index}" data-index="${index}">${option}</button>`;
           })
           .join("")
       : "";
@@ -857,7 +860,7 @@ const renderProcessOverview = () => {
     activeStep.type !== "question"
       ? ""
       : selectedAnswer === undefined
-        ? "Answer the checkpoint to continue."
+        ? "Choose one answer."
         : isAnswerCorrect
           ? "✅ Correct! Continue to the next step."
           : "❌ Not quite. Try again to keep the run moving.";
@@ -896,7 +899,7 @@ const renderProcessOverview = () => {
               <p class="process-objective">Checkpoint ${checkpointPlacementForNode(activeNode) === "middle" ? "(mid-node)" : "(end of node)"}</p>
               <h4>${activeStep.prompt}</h4>
               <div class="process-answer-grid">${answerButtons}</div>
-              <p class="feedback ${isAnswerCorrect ? "ok" : ""}">${feedback}</p>
+              <p class="feedback ${selectedAnswer === undefined ? "" : isAnswerCorrect ? "ok" : "bad"}">${feedback}</p>
             `
             : `
               <div class="process-visual-frame process-feature-image">${activeStep.screenshot}</div>
