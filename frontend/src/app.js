@@ -440,6 +440,21 @@ const playNavigationClick = () => {
   playTone({ frequency: 460, type: "square", duration: 0.045, gain: 0.025 });
 };
 
+const playProcessAdvanceClick = () => {
+  playTone({ frequency: 330, type: "square", duration: 0.02, gain: 0.018 });
+  setTimeout(() => playTone({ frequency: 250, type: "square", duration: 0.018, gain: 0.014 }), 22);
+};
+
+const playProcessRightSound = () => {
+  playTone({ frequency: 600, type: "square", duration: 0.04, gain: 0.024 });
+  setTimeout(() => playTone({ frequency: 760, type: "square", duration: 0.045, gain: 0.026 }), 36);
+};
+
+const playProcessWrongSound = () => {
+  playTone({ frequency: 210, type: "square", duration: 0.05, gain: 0.022 });
+  setTimeout(() => playTone({ frequency: 170, type: "square", duration: 0.05, gain: 0.02 }), 40);
+};
+
 const vibrateFeedback = (pattern) => {
   if (typeof navigator.vibrate !== "function") return;
   navigator.vibrate(pattern);
@@ -940,10 +955,10 @@ const renderProcessOverview = () => {
       state.processCheckpointResponses[activeNode.id] = selectedIndex;
 
       if (selectedIndex === activeStep.answer) {
-        playRightSound();
+        playProcessRightSound();
         vibrateFeedback([20, 30, 40]);
       } else {
-        playWrongSound();
+        playProcessWrongSound();
         vibrateFeedback([40]);
       }
 
@@ -952,7 +967,7 @@ const renderProcessOverview = () => {
   });
 
   document.getElementById("processNextStep")?.addEventListener("click", () => {
-    playNavigationClick();
+    playProcessAdvanceClick();
     const nextStepIndex = activeStepIndex + 1;
 
     if (nextStepIndex < activeFlow.length) {
@@ -965,7 +980,7 @@ const renderProcessOverview = () => {
       state.processCompletedNodeIds.push(activeNode.id);
       addFusionPoints(activeNode.reward);
       spawnConfetti("processOverviewPanel");
-      playRightSound();
+      playProcessRightSound();
     }
 
     const nextNodeIndex = Math.min(totalNodes - 1, state.processCurrentNodeIndex + 1);
