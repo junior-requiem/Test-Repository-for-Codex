@@ -949,6 +949,7 @@ const renderProcessOverview = () => {
   });
 
   document.getElementById("processNextStep")?.addEventListener("click", () => {
+    playNavigationClick();
     const nextStepIndex = activeStepIndex + 1;
 
     if (nextStepIndex < activeFlow.length) {
