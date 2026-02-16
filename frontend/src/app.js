@@ -872,6 +872,7 @@ const renderProcessOverview = () => {
   const nextDisabled = activeStep.type === "question" && !isAnswerCorrect;
 
   appEl.innerHTML = `
+    <button class="btn process-exit-floating" id="processExit" aria-label="Exit walkthrough">← Exit walkthrough</button>
     <div class="focused-practice" aria-label="process overview focus view">
       <section class="panel process-overview-panel" id="processOverviewPanel">
         <header class="process-overview-head">
@@ -913,11 +914,15 @@ const renderProcessOverview = () => {
 
       ${
         isComplete
-          ? `<section class="panel process-overview-finale"><h3>🏆 Process run complete</h3><p>You walked the full process lifecycle in a gamified sequence.</p></section>`
+          ? `<section class="panel process-overview-finale"><h3>🏆 Process run complete</h3><p>You walked the full process lifecycle in a gamified sequence.</p><p>Redirecting back to the learning map...</p></section>`
           : ""
       }
     </div>
   `;
+
+  document.getElementById("processExit")?.addEventListener("click", () => {
+    navigate("/skills");
+  });
 
   appEl.querySelectorAll("[data-overview-node]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -965,7 +970,14 @@ const renderProcessOverview = () => {
       state.processNodeStepIndexById[processOverviewNodes[nextNodeIndex]?.id] = 0;
     }
 
+    const runCompleted = state.processCompletedNodeIds.length === totalNodes;
     renderProcessOverview();
+
+    if (runCompleted) {
+      setTimeout(() => {
+        if (getPath() === "/process-overview") navigate("/skills");
+      }, 1100);
+    }
   });
 };
 

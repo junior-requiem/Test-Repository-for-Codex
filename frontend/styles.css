@@ -955,6 +955,17 @@ body.focus-mode .app {
   gap: var(--space-s);
 }
 
+.process-exit-floating {
+  position: fixed;
+  left: 16px;
+  top: 16px;
+  z-index: 40;
+  min-height: 40px;
+  padding: 0 14px;
+  font-size: 14px;
+  box-shadow: 0 3px 0 rgba(0, 0, 0, 0.16);
+}
+
 .lesson-progress.compact {
   margin-bottom: 0;
 }
@@ -1057,6 +1068,11 @@ body.focus-mode .app {
 
   .process-controls {
     flex-direction: column;
+  }
+
+  .process-exit-floating {
+    left: 10px;
+    top: 10px;
   }
 }
 
