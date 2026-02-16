@@ -22,7 +22,7 @@ export const registerReviewRoutes = (router: Router) => {
   router.post(
     "/review/queue",
     withAuth(
-      (
+      async (
         req: AuthenticatedRequest<{
           availableQuestions: Array<{ questionId: string; skillId: string }>;
         }>,
@@ -35,7 +35,7 @@ export const registerReviewRoutes = (router: Router) => {
           return;
         }
 
-        const summary = buildReviewSummary(req.auth.userId, availableQuestions);
+        const summary = await buildReviewSummary(req.auth.userId, availableQuestions);
         res.json(summary);
       },
     ),
@@ -44,7 +44,7 @@ export const registerReviewRoutes = (router: Router) => {
   router.post(
     "/review/attempt",
     withAuth(
-      (
+      async (
         req: AuthenticatedRequest<{
           questionId: string;
           skillId: string;
@@ -60,7 +60,7 @@ export const registerReviewRoutes = (router: Router) => {
           return;
         }
 
-        const updated = recordQuestionAttempt(req.auth.userId, {
+        const updated = await recordQuestionAttempt(req.auth.userId, {
           questionId,
           skillId,
           correct,
