@@ -441,18 +441,19 @@ const playNavigationClick = () => {
 };
 
 const playProcessAdvanceClick = () => {
-  playTone({ frequency: 330, type: "square", duration: 0.02, gain: 0.018 });
-  setTimeout(() => playTone({ frequency: 250, type: "square", duration: 0.018, gain: 0.014 }), 22);
+  playTone({ frequency: 185, type: "triangle", duration: 0.015, gain: 0.012 });
+  setTimeout(() => playTone({ frequency: 145, type: "triangle", duration: 0.012, gain: 0.01 }), 14);
 };
 
 const playProcessRightSound = () => {
-  playTone({ frequency: 600, type: "square", duration: 0.04, gain: 0.024 });
-  setTimeout(() => playTone({ frequency: 760, type: "square", duration: 0.045, gain: 0.026 }), 36);
+  playTone({ frequency: 420, type: "triangle", duration: 0.03, gain: 0.018 });
+  setTimeout(() => playTone({ frequency: 560, type: "triangle", duration: 0.03, gain: 0.02 }), 24);
+  setTimeout(() => playTone({ frequency: 720, type: "sine", duration: 0.028, gain: 0.018 }), 48);
 };
 
 const playProcessWrongSound = () => {
-  playTone({ frequency: 210, type: "square", duration: 0.05, gain: 0.022 });
-  setTimeout(() => playTone({ frequency: 170, type: "square", duration: 0.05, gain: 0.02 }), 40);
+  playTone({ frequency: 300, type: "triangle", duration: 0.04, gain: 0.018 });
+  setTimeout(() => playTone({ frequency: 220, type: "triangle", duration: 0.045, gain: 0.018 }), 30);
 };
 
 const vibrateFeedback = (pattern) => {
