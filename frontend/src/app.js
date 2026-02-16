@@ -100,6 +100,7 @@ const AUTH_REQUIRED_ROUTES = new Set(["/skills", "/process-overview", "/practice
 const AUTH_ONLY_ROUTES = new Set(["/login", "/register"]);
 
 const CUSTOM_SECTIONS_KEY = "learning-flow-custom-sections-v1";
+const CUSTOM_PROCESS_NODES_KEY = "learning-flow-custom-process-overview-nodes-v1";
 const DEVELOPER_DRAFT_KEY = "learning-flow-developer-draft-v1";
 
 const baseSections = [
@@ -176,7 +177,7 @@ const baseSections = [
   },
 ];
 
-const processOverviewNodes = [
+const baseProcessOverviewNodes = [
   {
     id: "recruit",
     title: "Recruit & Onboard",
@@ -193,6 +194,7 @@ const processOverviewNodes = [
       options: ["The onboarding checklist is approved", "The final payroll run is posted", "Offboarding surveys are sent"],
       answer: 0,
     },
+    checkpointPlacement: "end",
     reward: 30,
   },
   {
@@ -211,6 +213,7 @@ const processOverviewNodes = [
       options: ["Legal employer and assignment", "Expense report category", "Supplier payment terms"],
       answer: 0,
     },
+    checkpointPlacement: "middle",
     reward: 35,
   },
   {
@@ -229,6 +232,7 @@ const processOverviewNodes = [
       options: ["To reinforce understanding before advancing", "To hide unavailable actions", "To skip review checkpoints"],
       answer: 0,
     },
+    checkpointPlacement: "middle",
     reward: 40,
   },
   {
@@ -247,6 +251,7 @@ const processOverviewNodes = [
       options: ["Approved inputs and validation checks", "Social post scheduling", "Supplier onboarding status"],
       answer: 0,
     },
+    checkpointPlacement: "end",
     reward: 45,
   },
   {
@@ -265,6 +270,7 @@ const processOverviewNodes = [
       options: ["A complete offboarding confirmation", "Open candidate requisitions", "Pending learning enrollments"],
       answer: 0,
     },
+    checkpointPlacement: "end",
     reward: 50,
   },
 ];
@@ -281,6 +287,24 @@ const loadCustomSections = () => {
 };
 
 let customSections = loadCustomSections();
+
+const loadProcessOverviewNodes = () => {
+  try {
+    const raw = localStorage.getItem(CUSTOM_PROCESS_NODES_KEY);
+    if (!raw) return [...baseProcessOverviewNodes];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed) || !parsed.length) return [...baseProcessOverviewNodes];
+    return parsed;
+  } catch {
+    return [...baseProcessOverviewNodes];
+  }
+};
+
+let processOverviewNodes = loadProcessOverviewNodes();
+
+const saveProcessOverviewNodes = () => {
+  localStorage.setItem(CUSTOM_PROCESS_NODES_KEY, JSON.stringify(processOverviewNodes));
+};
 
 const loadDeveloperDraft = () => {
   try {
@@ -359,6 +383,7 @@ const state = {
   processCurrentNodeIndex: 0,
   processCompletedNodeIds: [],
   processCheckpointResponses: {},
+  processNodeStepIndexById: {},
 };
 
 const navEl = document.getElementById("nav");
@@ -433,7 +458,7 @@ const navigate = (path) => {
 const isAuthenticated = () => Boolean(state.session);
 const isAuthGateEnabled = () => state.authGateEnabled !== false;
 
-const isFocusedRoute = (route = getPath()) => route === "/practice" || route === "/lesson-complete";
+const isFocusedRoute = (route = getPath()) => route === "/practice" || route === "/lesson-complete" || route === "/process-overview";
 
 const syncRouteChrome = () => {
   const focused = isFocusedRoute();
@@ -717,116 +742,187 @@ const processNodeStatus = (index) => {
   const node = processOverviewNodes[index];
   if (!node) return "locked";
   if (state.processCompletedNodeIds.includes(node.id)) return "done";
-  if (index === state.processCurrentNodeIndex) return "current";
+  if (index === 0) return "current";
+  const prev = processOverviewNodes[index - 1];
+  if (prev && state.processCompletedNodeIds.includes(prev.id)) return "current";
   return "locked";
+};
+
+const checkpointPlacementForNode = (node) => {
+  if (node.checkpointPlacement === "middle" || node.checkpointPlacement === "end") return node.checkpointPlacement;
+  return "end";
+};
+
+const buildNodeFlow = (node) => {
+  const steps = Array.isArray(node.walkthrough) ? node.walkthrough : [];
+  const visuals = Array.isArray(node.visuals) ? node.visuals : [];
+  const contentSteps = steps.map((text, index) => ({
+    type: "content",
+    text,
+    screenshot: visuals[index] || visuals[0] || `Step ${index + 1} screenshot`,
+  }));
+
+  const questionStep = {
+    type: "question",
+    prompt: node.checkpoint?.prompt || "Checkpoint",
+    options: Array.isArray(node.checkpoint?.options) ? node.checkpoint.options : [],
+    answer: Number.isInteger(node.checkpoint?.answer) ? node.checkpoint.answer : 0,
+  };
+
+  const insertion =
+    checkpointPlacementForNode(node) === "middle"
+      ? Math.max(1, Math.ceil(contentSteps.length / 2))
+      : contentSteps.length;
+
+  const flow = [...contentSteps];
+  flow.splice(Math.min(insertion, flow.length), 0, questionStep);
+  return flow;
 };
 
 const renderProcessOverview = () => {
   const totalNodes = processOverviewNodes.length;
-  const safeIndex = Math.max(0, Math.min(state.processCurrentNodeIndex, totalNodes - 1));
-  state.processCurrentNodeIndex = safeIndex;
 
-  const activeNode = processOverviewNodes[safeIndex];
-  const activeStatus = processNodeStatus(safeIndex);
+  if (!totalNodes) {
+    renderShell(
+      "Process Overview Mode",
+      "Walk users through each process node with annotated visuals, contextual coaching, and gamified checkpoints.",
+      `<span class="process-badge">0% journey complete</span>`,
+      `
+        <section class="panel process-overview-finale">
+          <h3>No process nodes yet</h3>
+          <p>Add nodes in Developer Mode to build your prototype walkthrough.</p>
+          <button class="btn primary" id="goDeveloperProcess">Open Developer Mode</button>
+        </section>
+      `,
+    );
+    document.getElementById("goDeveloperProcess")?.addEventListener("click", () => navigate("/developer"));
+    return;
+  }
+
+  const validNodeIds = new Set(processOverviewNodes.map((node) => node.id));
+  state.processCompletedNodeIds = state.processCompletedNodeIds.filter((id) => validNodeIds.has(id));
+  Object.keys(state.processCheckpointResponses).forEach((id) => {
+    if (!validNodeIds.has(id)) delete state.processCheckpointResponses[id];
+  });
+  Object.keys(state.processNodeStepIndexById || {}).forEach((id) => {
+    if (!validNodeIds.has(id)) delete state.processNodeStepIndexById[id];
+  });
+
+  const reachableIndex = processOverviewNodes.findIndex((_, index) => processNodeStatus(index) === "current");
+  const safeIndex = Math.max(0, Math.min(state.processCurrentNodeIndex, totalNodes - 1));
+  state.processCurrentNodeIndex = processNodeStatus(safeIndex) === "locked" ? Math.max(0, reachableIndex) : safeIndex;
+
+  const activeNode = processOverviewNodes[state.processCurrentNodeIndex];
+  const activeFlow = buildNodeFlow(activeNode);
+  const storedStep = Number(state.processNodeStepIndexById[activeNode.id] || 0);
+  const activeStepIndex = Math.max(0, Math.min(storedStep, activeFlow.length - 1));
+  state.processNodeStepIndexById[activeNode.id] = activeStepIndex;
+  const activeStep = activeFlow[activeStepIndex];
+
   const selectedAnswer = state.processCheckpointResponses[activeNode.id];
-  const isComplete = state.processCompletedNodeIds.length === totalNodes;
+  const isAnswerCorrect = selectedAnswer === activeStep.answer;
   const trackerProgress = Math.round((state.processCompletedNodeIds.length / totalNodes) * 100);
+  const isComplete = state.processCompletedNodeIds.length === totalNodes;
 
   const tracker = processOverviewNodes
     .map((node, index) => {
       const status = processNodeStatus(index);
       const isReachable = status !== "locked";
+      const nodeIcon = status === "done" ? "✓" : status === "current" ? "▶" : index + 1;
+      const connector = index < totalNodes - 1 ? '<span class="overview-node-connector" aria-hidden="true">›</span>' : "";
       return `
-        <li>
+        <li class="overview-node-item">
           <button class="overview-node ${status}" data-overview-node="${index}" ${isReachable ? "" : "disabled"}>
-            <span class="overview-node-index">${index + 1}</span>
+            <span class="overview-node-index">${nodeIcon}</span>
             <strong>${node.title}</strong>
             <small>${status === "done" ? "Complete" : status === "current" ? "In progress" : "Locked"}</small>
           </button>
+          ${connector}
         </li>
       `;
     })
     .join("");
 
-  const answerButtons = activeNode.checkpoint.options
-    .map((option, index) => {
-      const isPicked = selectedAnswer === index;
-      return `<button class="btn overview-answer ${isPicked ? "selected" : ""}" data-overview-answer="${index}">${option}</button>`;
-    })
-    .join("");
+  const answerButtons =
+    activeStep.type === "question"
+      ? activeStep.options
+          .map((option, index) => {
+            const isPicked = selectedAnswer === index;
+            return `<button class="btn overview-answer ${isPicked ? "selected" : ""}" data-overview-answer="${index}">${option}</button>`;
+          })
+          .join("")
+      : "";
 
   const feedback =
-    selectedAnswer === undefined
-      ? "Answer the checkpoint to unlock the next phase."
-      : selectedAnswer === activeNode.checkpoint.answer
-        ? "✅ Correct! Node cleared and progress advanced."
-        : "❌ Not quite. Recheck the walkthrough context and try again.";
+    activeStep.type !== "question"
+      ? ""
+      : selectedAnswer === undefined
+        ? "Answer the checkpoint to continue."
+        : isAnswerCorrect
+          ? "✅ Correct! Continue to the next step."
+          : "❌ Not quite. Try again to keep the run moving.";
 
-  renderShell(
-    "Process Overview Mode",
-    "Walk users through each process node with annotated visuals, contextual coaching, and gamified checkpoints.",
-    `<span class="process-badge">${trackerProgress}% journey complete</span>`,
-    `
-      <section class="panel process-overview-panel">
+  const nextButtonLabel =
+    activeStep.type === "question"
+      ? "Continue"
+      : activeStepIndex >= activeFlow.length - 1
+        ? "Finish node"
+        : "Next step";
+
+  const nextDisabled = activeStep.type === "question" && !isAnswerCorrect;
+
+  appEl.innerHTML = `
+    <button class="btn process-exit-floating" id="processExit" aria-label="Exit walkthrough">← Exit walkthrough</button>
+    <div class="focused-practice" aria-label="process overview focus view">
+      <section class="panel process-overview-panel" id="processOverviewPanel">
         <header class="process-overview-head">
           <div>
             <p class="process-kicker">Guided walkthrough</p>
             <h3>${activeNode.title}</h3>
             <p>${activeNode.subtitle}</p>
           </div>
-          <div class="process-avatar">🧭 You are here: Node ${safeIndex + 1}</div>
+          <div class="process-avatar">🧭 Node ${state.processCurrentNodeIndex + 1} of ${totalNodes}</div>
         </header>
 
         <div class="bar"><span style="width:${trackerProgress}%"></span></div>
         <ol class="overview-node-tracker">${tracker}</ol>
       </section>
 
-      <section class="panel process-overview-content">
-        <article>
-          <h3>Context for this phase</h3>
-          <p>${activeNode.objective}</p>
-          <ul class="process-walkthrough-list">
-            ${activeNode.walkthrough.map((step) => `<li>${step}</li>`).join("")}
-          </ul>
-        </article>
-        <article>
-          <h3>Visual storyboard</h3>
-          <div class="process-visual-grid">
-            ${activeNode.visuals
-              .map(
-                (label, index) => `
-                  <div class="process-visual-card">
-                    <div class="process-visual-frame">Screenshot ${index + 1}</div>
-                    <strong>${label}</strong>
-                    <small>Use annotations to explain what users should notice on this screen.</small>
-                  </div>
-                `,
-              )
-              .join("")}
-          </div>
-        </article>
-      </section>
+      <section class="panel process-overview-content process-overview-focus">
+        <h3>${activeNode.title}</h3>
+        ${
+          activeStep.type === "question"
+            ? `
+              <p class="process-objective">Checkpoint ${checkpointPlacementForNode(activeNode) === "middle" ? "(mid-node)" : "(end of node)"}</p>
+              <h4>${activeStep.prompt}</h4>
+              <div class="process-answer-grid">${answerButtons}</div>
+              <p class="feedback ${isAnswerCorrect ? "ok" : ""}">${feedback}</p>
+            `
+            : `
+              <div class="process-visual-frame process-feature-image">${activeStep.screenshot}</div>
+              <p class="process-objective">${activeNode.objective}</p>
+              <p>${activeStep.text}</p>
+            `
+        }
 
-      <section class="panel process-overview-quiz ${activeStatus === "done" ? "done" : ""}">
-        <h3>Checkpoint challenge</h3>
-        <p>${activeNode.checkpoint.prompt}</p>
-        <div class="process-answer-grid">${answerButtons}</div>
-        <p class="feedback ${selectedAnswer === activeNode.checkpoint.answer ? "ok" : ""}">${feedback}</p>
-        <p class="process-reward">Reward for this node: +${activeNode.reward} Fusion Points</p>
+        <p class="process-reward">Node reward: +${activeNode.reward} Fusion Points</p>
 
-        <div class="process-controls">
-          <button class="btn" id="processPrev" ${safeIndex === 0 ? "disabled" : ""}>Previous node</button>
-          <button class="btn primary" id="processNext" ${activeStatus !== "done" || safeIndex >= totalNodes - 1 ? "disabled" : ""}>Next node</button>
+        <div class="process-controls process-controls-single">
+          <button class="btn primary" id="processNextStep" ${nextDisabled ? "disabled" : ""}>${nextButtonLabel}</button>
         </div>
       </section>
 
       ${
         isComplete
-          ? `<section class="panel process-overview-finale"><h3>🏆 Process run complete</h3><p>You built a full visual and gamified walkthrough from Recruit to Retire.</p></section>`
+          ? `<section class="panel process-overview-finale"><h3>🏆 Process run complete</h3><p>You walked the full process lifecycle in a gamified sequence.</p><p>Redirecting back to the learning map...</p></section>`
           : ""
       }
-    `,
-  );
+    </div>
+  `;
+
+  document.getElementById("processExit")?.addEventListener("click", () => {
+    navigate("/skills");
+  });
 
   appEl.querySelectorAll("[data-overview-node]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -840,28 +936,53 @@ const renderProcessOverview = () => {
       const selectedIndex = Number(button.dataset.overviewAnswer);
       state.processCheckpointResponses[activeNode.id] = selectedIndex;
 
-      if (selectedIndex === activeNode.checkpoint.answer && !state.processCompletedNodeIds.includes(activeNode.id)) {
-        state.processCompletedNodeIds.push(activeNode.id);
-        addFusionPoints(activeNode.reward);
-        state.processCurrentNodeIndex = Math.min(safeIndex + 1, totalNodes - 1);
+      if (selectedIndex === activeStep.answer) {
+        playRightSound();
+        vibrateFeedback([20, 30, 40]);
+      } else {
+        playWrongSound();
+        vibrateFeedback([40]);
       }
 
       renderProcessOverview();
     });
   });
 
-  document.getElementById("processPrev")?.addEventListener("click", () => {
-    state.processCurrentNodeIndex = Math.max(0, safeIndex - 1);
-    renderProcessOverview();
-  });
+  document.getElementById("processNextStep")?.addEventListener("click", () => {
+    playNavigationClick();
+    const nextStepIndex = activeStepIndex + 1;
 
-  document.getElementById("processNext")?.addEventListener("click", () => {
-    state.processCurrentNodeIndex = Math.min(totalNodes - 1, safeIndex + 1);
+    if (nextStepIndex < activeFlow.length) {
+      state.processNodeStepIndexById[activeNode.id] = nextStepIndex;
+      renderProcessOverview();
+      return;
+    }
+
+    if (!state.processCompletedNodeIds.includes(activeNode.id)) {
+      state.processCompletedNodeIds.push(activeNode.id);
+      addFusionPoints(activeNode.reward);
+      spawnConfetti("processOverviewPanel");
+      playRightSound();
+    }
+
+    const nextNodeIndex = Math.min(totalNodes - 1, state.processCurrentNodeIndex + 1);
+    state.processCurrentNodeIndex = nextNodeIndex;
+    if (state.processNodeStepIndexById[processOverviewNodes[nextNodeIndex]?.id] === undefined) {
+      state.processNodeStepIndexById[processOverviewNodes[nextNodeIndex]?.id] = 0;
+    }
+
+    const runCompleted = state.processCompletedNodeIds.length === totalNodes;
     renderProcessOverview();
+
+    if (runCompleted) {
+      setTimeout(() => {
+        if (getPath() === "/process-overview") navigate("/skills");
+      }, 1100);
+    }
   });
 };
 
-const spawnConfetti = () => {
+const spawnConfetti = (targetId = "lessonPanel") => {
   const burst = document.createElement("div");
   burst.className = "confetti-burst";
   for (let i = 0; i < 16; i += 1) {
@@ -871,7 +992,8 @@ const spawnConfetti = () => {
     dot.style.setProperty("--d", `${(Math.random() * 220 + 220).toFixed(0)}ms`);
     burst.appendChild(dot);
   }
-  const panel = document.getElementById("lessonPanel");
+  const panel = document.getElementById(targetId);
+  if (!panel) return;
   panel.appendChild(burst);
   setTimeout(() => burst.remove(), 700);
 };
@@ -1177,6 +1299,20 @@ const renderDeveloper = () => {
         .join("")
     : '<li><p class="empty-state">No content yet. Start by adding your first question or knowledge break.</p></li>';
 
+  const processNodeRows = processOverviewNodes
+    .map(
+      (node, index) => `
+      <li class="developer-process-row">
+        <div>
+          <strong>${index + 1}. ${node.title}</strong>
+          <small>${node.subtitle}</small>
+        </div>
+        <button class="btn" type="button" data-process-delete="${index}">Delete</button>
+      </li>
+    `,
+    )
+    .join("");
+
   renderShell(
     "Developer Mode",
     "No-code builder for custom units, lessons, and multi-question lesson previews.",
@@ -1231,6 +1367,31 @@ const renderDeveloper = () => {
             <button class="btn primary" type="submit" ${customLessons.length ? "" : "disabled"}>Add question</button>
           </form>
         </article>
+
+        <article>
+          <h3>Add Process Node</h3>
+          <form id="processNodeForm" class="developer-form">
+            <label>Node title <input name="nodeTitle" required placeholder="Manage & Develop" /></label>
+            <label>Node subtitle <input name="nodeSubtitle" required placeholder="Guide performance and growth" /></label>
+            <label>Objective <textarea name="nodeObjective" rows="2" required placeholder="Explain this phase and what success looks like."></textarea></label>
+            <label>Visual labels (comma separated) <input name="nodeVisuals" required placeholder="Goal dashboard, Learning timeline" /></label>
+            <label>Walkthrough steps (one per line) <textarea name="nodeWalkthrough" rows="3" required placeholder="Open the dashboard
+Call out key fields"></textarea></label>
+            <label>Checkpoint prompt <input name="checkpointPrompt" required placeholder="Which action unlocks this node?" /></label>
+            <label>Checkpoint location
+              <select name="checkpointPlacement">
+                <option value="middle">Middle of node</option>
+                <option value="end" selected>End of node</option>
+              </select>
+            </label>
+            <label>Checkpoint options (one per line) <textarea name="checkpointOptions" rows="3" required placeholder="Correct option
+Distractor A
+Distractor B"></textarea></label>
+            <label>Correct option number <input name="checkpointAnswer" type="number" min="1" value="1" required /></label>
+            <label>Reward points <input name="nodeReward" type="number" min="5" step="5" value="30" required /></label>
+            <button class="btn primary" type="submit">Add process node</button>
+          </form>
+        </article>
       </section>
 
       <section class="panel">
@@ -1247,6 +1408,20 @@ const renderDeveloper = () => {
       </section>
 
       <section class="panel">
+        <h3>Process node sequence</h3>
+        <p class="empty-state">These power the Process Overview route and are fully editable for prototype iteration.</p>
+        ${
+          processNodeRows
+            ? `<ul class="developer-unit-list">${processNodeRows}</ul>`
+            : '<p class="empty-state">No process nodes yet. Add one using the form above.</p>'
+        }
+        <div class="developer-actions-row">
+          <button class="btn" id="resetProcessProgress" type="button">Reset process progress</button>
+          <button class="btn" id="restoreProcessDefaults" type="button">Restore default nodes</button>
+        </div>
+      </section>
+
+      <section class="panel">
         <h3>Custom units</h3>
         ${
           unitRows
@@ -1260,6 +1435,7 @@ const renderDeveloper = () => {
   const unitForm = document.getElementById("unitForm");
   const lessonBuilderForm = document.getElementById("lessonBuilderForm");
   const questionBuilderForm = document.getElementById("questionBuilderForm");
+  const processNodeForm = document.getElementById("processNodeForm");
   const questionLessonSelect = questionBuilderForm.querySelector('select[name="lessonId"]');
   const insertIndexSelect = questionBuilderForm.querySelector('select[name="insertIndex"]');
 
@@ -1270,6 +1446,18 @@ const renderDeveloper = () => {
   questionBuilderForm.questionTitle.value = developerDraft.questionTitle || "";
   questionBuilderForm.questionBody.value = developerDraft.questionBody || "";
   questionBuilderForm.correctAnswer.value = developerDraft.correctAnswer || "";
+  processNodeForm.nodeTitle.value = developerDraft.processNodeTitle || "";
+  processNodeForm.nodeSubtitle.value = developerDraft.processNodeSubtitle || "";
+  processNodeForm.nodeObjective.value = developerDraft.processNodeObjective || "";
+  processNodeForm.nodeVisuals.value = developerDraft.processNodeVisuals || "";
+  processNodeForm.nodeWalkthrough.value = developerDraft.processNodeWalkthrough || "";
+  processNodeForm.checkpointPrompt.value = developerDraft.processNodeCheckpointPrompt || "";
+  processNodeForm.checkpointPlacement.value = ["middle", "end"].includes(developerDraft.processNodeCheckpointPlacement)
+    ? developerDraft.processNodeCheckpointPlacement
+    : "end";
+  processNodeForm.checkpointOptions.value = developerDraft.processNodeCheckpointOptions || "";
+  processNodeForm.checkpointAnswer.value = developerDraft.processNodeCheckpointAnswer || "1";
+  processNodeForm.nodeReward.value = developerDraft.processNodeReward || "30";
   if (["question", "informative"].includes(developerDraft.questionType)) {
     questionBuilderForm.questionType.value = developerDraft.questionType;
   }
@@ -1428,6 +1616,77 @@ const renderDeveloper = () => {
     saveDeveloperDraft({ questionType: event.target.value });
   });
 
+  processNodeForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const visuals = form.nodeVisuals.value
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean);
+    const walkthrough = form.nodeWalkthrough.value
+      .split("\n")
+      .map((item) => item.trim())
+      .filter(Boolean);
+    const checkpointOptions = form.checkpointOptions.value
+      .split("\n")
+      .map((item) => item.trim())
+      .filter(Boolean);
+
+    if (visuals.length === 0 || walkthrough.length === 0 || checkpointOptions.length < 2) return;
+
+    const answerIndex = Math.max(0, Math.min(Number(form.checkpointAnswer.value) - 1, checkpointOptions.length - 1));
+
+    processOverviewNodes.push({
+      id: `custom-process-node-${Date.now()}`,
+      title: form.nodeTitle.value.trim(),
+      subtitle: form.nodeSubtitle.value.trim(),
+      objective: form.nodeObjective.value.trim(),
+      visuals,
+      walkthrough,
+      checkpoint: {
+        prompt: form.checkpointPrompt.value.trim(),
+        options: checkpointOptions,
+        answer: answerIndex,
+      },
+      checkpointPlacement: form.checkpointPlacement.value === "middle" ? "middle" : "end",
+      reward: Math.max(5, Number(form.nodeReward.value) || 30),
+    });
+
+    saveProcessOverviewNodes();
+    clearDeveloperDraftSection([
+      "processNodeTitle",
+      "processNodeSubtitle",
+      "processNodeObjective",
+      "processNodeVisuals",
+      "processNodeWalkthrough",
+      "processNodeCheckpointPrompt",
+      "processNodeCheckpointPlacement",
+      "processNodeCheckpointOptions",
+      "processNodeCheckpointAnswer",
+      "processNodeReward",
+    ]);
+    form.reset();
+    form.checkpointAnswer.value = "1";
+    form.checkpointPlacement.value = "end";
+    form.nodeReward.value = "30";
+    renderDeveloper();
+  });
+
+  processNodeForm.addEventListener("input", () => {
+    saveDeveloperDraft({
+      processNodeTitle: processNodeForm.nodeTitle.value,
+      processNodeSubtitle: processNodeForm.nodeSubtitle.value,
+      processNodeObjective: processNodeForm.nodeObjective.value,
+      processNodeVisuals: processNodeForm.nodeVisuals.value,
+      processNodeWalkthrough: processNodeForm.nodeWalkthrough.value,
+      processNodeCheckpointPrompt: processNodeForm.checkpointPrompt.value,
+      processNodeCheckpointPlacement: processNodeForm.checkpointPlacement.value,
+      processNodeCheckpointOptions: processNodeForm.checkpointOptions.value,
+      processNodeCheckpointAnswer: processNodeForm.checkpointAnswer.value,
+      processNodeReward: processNodeForm.nodeReward.value,
+    });
+  });
+
   questionLessonSelect?.addEventListener("change", (event) => {
     state.developerSelectedLessonId = event.target.value;
     state.developerQuestionIndex = 0;
@@ -1447,6 +1706,38 @@ const renderDeveloper = () => {
       if (insertIndexSelect) insertIndexSelect.value = state.developerInsertIndex;
       renderDeveloper();
     });
+  });
+
+  appEl.querySelectorAll("[data-process-delete]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const index = Number(button.dataset.processDelete);
+      if (!Number.isInteger(index) || index < 0 || index >= processOverviewNodes.length) return;
+      processOverviewNodes.splice(index, 1);
+      saveProcessOverviewNodes();
+      state.processCurrentNodeIndex = 0;
+      state.processCompletedNodeIds = [];
+      state.processCheckpointResponses = {};
+      state.processNodeStepIndexById = {};
+      renderDeveloper();
+    });
+  });
+
+  document.getElementById("resetProcessProgress")?.addEventListener("click", () => {
+    state.processCurrentNodeIndex = 0;
+    state.processCompletedNodeIds = [];
+    state.processCheckpointResponses = {};
+    state.processNodeStepIndexById = {};
+    renderDeveloper();
+  });
+
+  document.getElementById("restoreProcessDefaults")?.addEventListener("click", () => {
+    processOverviewNodes = [...baseProcessOverviewNodes];
+    saveProcessOverviewNodes();
+    state.processCurrentNodeIndex = 0;
+    state.processCompletedNodeIds = [];
+    state.processCheckpointResponses = {};
+    state.processNodeStepIndexById = {};
+    renderDeveloper();
   });
 
   const previewPrev = document.getElementById("previewPrev");
