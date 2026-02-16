@@ -440,6 +440,21 @@ const playNavigationClick = () => {
   playTone({ frequency: 460, type: "square", duration: 0.045, gain: 0.025 });
 };
 
+const playProcessAdvanceClick = () => {
+  playTone({ frequency: 330, type: "square", duration: 0.02, gain: 0.018 });
+  setTimeout(() => playTone({ frequency: 250, type: "square", duration: 0.018, gain: 0.014 }), 22);
+};
+
+const playProcessRightSound = () => {
+  playTone({ frequency: 600, type: "square", duration: 0.04, gain: 0.024 });
+  setTimeout(() => playTone({ frequency: 760, type: "square", duration: 0.045, gain: 0.026 }), 36);
+};
+
+const playProcessWrongSound = () => {
+  playTone({ frequency: 210, type: "square", duration: 0.05, gain: 0.022 });
+  setTimeout(() => playTone({ frequency: 170, type: "square", duration: 0.05, gain: 0.02 }), 40);
+};
+
 const vibrateFeedback = (pattern) => {
   if (typeof navigator.vibrate !== "function") return;
   navigator.vibrate(pattern);
@@ -848,7 +863,10 @@ const renderProcessOverview = () => {
       ? activeStep.options
           .map((option, index) => {
             const isPicked = selectedAnswer === index;
-            return `<button class="btn overview-answer ${isPicked ? "selected" : ""}" data-overview-answer="${index}">${option}</button>`;
+            const isCorrectOption = selectedAnswer !== undefined && index === activeStep.answer;
+            const isWrongPicked = isPicked && selectedAnswer !== activeStep.answer;
+            const stateClass = isCorrectOption ? "correct" : isWrongPicked ? "wrong" : isPicked ? "selected" : "";
+            return `<button class="btn overview-answer ${stateClass}" data-overview-answer="${index}" data-index="${index}">${option}</button>`;
           })
           .join("")
       : "";
@@ -857,7 +875,7 @@ const renderProcessOverview = () => {
     activeStep.type !== "question"
       ? ""
       : selectedAnswer === undefined
-        ? "Answer the checkpoint to continue."
+        ? "Choose one answer."
         : isAnswerCorrect
           ? "✅ Correct! Continue to the next step."
           : "❌ Not quite. Try again to keep the run moving.";
@@ -896,7 +914,7 @@ const renderProcessOverview = () => {
               <p class="process-objective">Checkpoint ${checkpointPlacementForNode(activeNode) === "middle" ? "(mid-node)" : "(end of node)"}</p>
               <h4>${activeStep.prompt}</h4>
               <div class="process-answer-grid">${answerButtons}</div>
-              <p class="feedback ${isAnswerCorrect ? "ok" : ""}">${feedback}</p>
+              <p class="feedback ${selectedAnswer === undefined ? "" : isAnswerCorrect ? "ok" : "bad"}">${feedback}</p>
             `
             : `
               <div class="process-visual-frame process-feature-image">${activeStep.screenshot}</div>
@@ -937,10 +955,10 @@ const renderProcessOverview = () => {
       state.processCheckpointResponses[activeNode.id] = selectedIndex;
 
       if (selectedIndex === activeStep.answer) {
-        playRightSound();
+        playProcessRightSound();
         vibrateFeedback([20, 30, 40]);
       } else {
-        playWrongSound();
+        playProcessWrongSound();
         vibrateFeedback([40]);
       }
 
@@ -949,7 +967,7 @@ const renderProcessOverview = () => {
   });
 
   document.getElementById("processNextStep")?.addEventListener("click", () => {
-    playNavigationClick();
+    playProcessAdvanceClick();
     const nextStepIndex = activeStepIndex + 1;
 
     if (nextStepIndex < activeFlow.length) {
@@ -962,7 +980,7 @@ const renderProcessOverview = () => {
       state.processCompletedNodeIds.push(activeNode.id);
       addFusionPoints(activeNode.reward);
       spawnConfetti("processOverviewPanel");
-      playRightSound();
+      playProcessRightSound();
     }
 
     const nextNodeIndex = Math.min(totalNodes - 1, state.processCurrentNodeIndex + 1);
