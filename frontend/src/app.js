@@ -99,6 +99,7 @@ const AUTH_REQUIRED_ROUTES = new Set(["/skills", "/practice", "/lesson-complete"
 const AUTH_ONLY_ROUTES = new Set(["/login", "/register"]);
 
 const CUSTOM_SECTIONS_KEY = "learning-flow-custom-sections-v1";
+const DEVELOPER_DRAFT_KEY = "learning-flow-developer-draft-v1";
 
 const baseSections = [
   {
@@ -186,6 +187,30 @@ const loadCustomSections = () => {
 };
 
 let customSections = loadCustomSections();
+
+const loadDeveloperDraft = () => {
+  try {
+    const raw = localStorage.getItem(DEVELOPER_DRAFT_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+};
+
+const saveDeveloperDraft = (patch) => {
+  const existing = loadDeveloperDraft();
+  localStorage.setItem(DEVELOPER_DRAFT_KEY, JSON.stringify({ ...existing, ...patch }));
+};
+
+const clearDeveloperDraftSection = (keys) => {
+  const existing = loadDeveloperDraft();
+  keys.forEach((key) => {
+    delete existing[key];
+  });
+  localStorage.setItem(DEVELOPER_DRAFT_KEY, JSON.stringify(existing));
+};
 
 const saveCustomSections = () => {
   localStorage.setItem(CUSTOM_SECTIONS_KEY, JSON.stringify(customSections));
@@ -791,6 +816,7 @@ const renderPractice = () => {
 };
 
 const renderDeveloper = () => {
+  const developerDraft = loadDeveloperDraft();
   const customLessons = customSections.flatMap((section) =>
     section.lessons.map((lesson) => ({
       lesson,
@@ -986,7 +1012,24 @@ const renderDeveloper = () => {
     `,
   );
 
-  document.getElementById("unitForm").addEventListener("submit", (event) => {
+  const unitForm = document.getElementById("unitForm");
+  const lessonBuilderForm = document.getElementById("lessonBuilderForm");
+  const questionBuilderForm = document.getElementById("questionBuilderForm");
+  const questionLessonSelect = questionBuilderForm.querySelector('select[name="lessonId"]');
+  const insertIndexSelect = questionBuilderForm.querySelector('select[name="insertIndex"]');
+
+  unitForm.title.value = developerDraft.unitTitle || "";
+  unitForm.subtitle.value = developerDraft.unitSubtitle || "";
+  lessonBuilderForm.lessonTitle.value = developerDraft.lessonTitle || "";
+  lessonBuilderForm.lessonDescription.value = developerDraft.lessonDescription || "";
+  questionBuilderForm.questionTitle.value = developerDraft.questionTitle || "";
+  questionBuilderForm.questionBody.value = developerDraft.questionBody || "";
+  questionBuilderForm.correctAnswer.value = developerDraft.correctAnswer || "";
+  if (["question", "informative"].includes(developerDraft.questionType)) {
+    questionBuilderForm.questionType.value = developerDraft.questionType;
+  }
+
+  unitForm.addEventListener("submit", (event) => {
     event.preventDefault();
     const form = event.currentTarget;
     const title = form.title.value.trim();
@@ -1001,10 +1044,23 @@ const renderDeveloper = () => {
       lessons: [],
     });
     saveCustomSections();
+    clearDeveloperDraftSection(["unitTitle", "unitSubtitle"]);
     renderDeveloper();
   });
 
-  const lessonBuilderForm = document.getElementById("lessonBuilderForm");
+  unitForm.addEventListener("input", () => {
+    saveDeveloperDraft({
+      unitTitle: unitForm.title.value,
+      unitSubtitle: unitForm.subtitle.value,
+    });
+  });
+
+  lessonBuilderForm.addEventListener("input", () => {
+    saveDeveloperDraft({
+      lessonTitle: lessonBuilderForm.lessonTitle.value,
+      lessonDescription: lessonBuilderForm.lessonDescription.value,
+    });
+  });
   lessonBuilderForm.addEventListener("submit", (event) => {
     event.preventDefault();
     const form = event.currentTarget;
@@ -1030,13 +1086,10 @@ const renderDeveloper = () => {
     state.developerQuestionIndex = 0;
     state.developerInsertIndex = "end";
     saveCustomSections();
+    clearDeveloperDraftSection(["lessonTitle", "lessonDescription"]);
     form.reset();
     renderDeveloper();
   });
-
-  const questionBuilderForm = document.getElementById("questionBuilderForm");
-  const questionLessonSelect = questionBuilderForm.querySelector('select[name="lessonId"]');
-  const insertIndexSelect = questionBuilderForm.querySelector('select[name="insertIndex"]');
 
   const rebuildInsertOptions = (lessonId) => {
     if (!insertIndexSelect) return;
@@ -1112,8 +1165,22 @@ const renderDeveloper = () => {
     state.developerQuestionIndex = insertIndex;
     state.developerInsertIndex = String(insertIndex + 1);
     saveCustomSections();
+    clearDeveloperDraftSection(["questionTitle", "questionBody", "correctAnswer"]);
     form.reset();
     renderDeveloper();
+  });
+
+  questionBuilderForm.addEventListener("input", () => {
+    saveDeveloperDraft({
+      questionType: questionBuilderForm.questionType.value,
+      questionTitle: questionBuilderForm.questionTitle.value,
+      questionBody: questionBuilderForm.questionBody.value,
+      correctAnswer: questionBuilderForm.correctAnswer.value,
+    });
+  });
+
+  questionBuilderForm.querySelector('select[name="questionType"]')?.addEventListener("change", (event) => {
+    saveDeveloperDraft({ questionType: event.target.value });
   });
 
   questionLessonSelect?.addEventListener("change", (event) => {
