@@ -87,6 +87,7 @@ const readAuthGateEnabled = () => {
 const routes = [
   { name: "Home", path: "/" },
   { name: "Learn", path: "/skills", requiresAuth: true },
+  { name: "Process Overview", path: "/process-overview", requiresAuth: true },
   { name: "Practice", path: "/practice", requiresAuth: true },
   { name: "Review", path: "/review", requiresAuth: true },
   { name: "Developer Mode", path: "/developer", requiresAuth: true },
@@ -95,7 +96,7 @@ const routes = [
   { name: "Register", path: "/register", authOnly: true },
 ];
 
-const AUTH_REQUIRED_ROUTES = new Set(["/skills", "/practice", "/lesson-complete", "/review", "/developer", "/profile"]);
+const AUTH_REQUIRED_ROUTES = new Set(["/skills", "/process-overview", "/practice", "/lesson-complete", "/review", "/developer", "/profile"]);
 const AUTH_ONLY_ROUTES = new Set(["/login", "/register"]);
 
 const CUSTOM_SECTIONS_KEY = "learning-flow-custom-sections-v1";
@@ -172,6 +173,99 @@ const baseSections = [
         },
       },
     ],
+  },
+];
+
+const processOverviewNodes = [
+  {
+    id: "recruit",
+    title: "Recruit & Onboard",
+    subtitle: "Attract and prepare the right talent.",
+    objective: "Build candidate pipeline, align role expectations, and prep the first-day experience.",
+    visuals: ["Role profile brief", "Candidate funnel snapshot", "Welcome checklist"],
+    walkthrough: [
+      "Open with the role objective and business priority.",
+      "Overlay key screenshots that show job req intake and approvals.",
+      "Add contextual notes that explain what to validate before onboarding starts.",
+    ],
+    checkpoint: {
+      prompt: "What makes this node complete?",
+      options: ["The onboarding checklist is approved", "The final payroll run is posted", "Offboarding surveys are sent"],
+      answer: 0,
+    },
+    reward: 30,
+  },
+  {
+    id: "hire",
+    title: "Hire & Position",
+    subtitle: "Convert offers into active worker records.",
+    objective: "Capture legal employer, position, and assignment details with strong data quality.",
+    visuals: ["Offer letter capture", "Position assignment card", "Data validation panel"],
+    walkthrough: [
+      "Highlight each screen and annotate which fields are non-negotiable.",
+      "Show a callout layer for common setup mistakes.",
+      "Pause for a mini-quiz so users can identify the correct hiring sequence.",
+    ],
+    checkpoint: {
+      prompt: "Which detail is critical during hire processing?",
+      options: ["Legal employer and assignment", "Expense report category", "Supplier payment terms"],
+      answer: 0,
+    },
+    reward: 35,
+  },
+  {
+    id: "develop",
+    title: "Manage & Develop",
+    subtitle: "Guide performance, growth, and retention.",
+    objective: "Drive manager coaching, goal tracking, and role-readiness progression.",
+    visuals: ["Goal dashboard", "Learning plan timeline", "Performance note feed"],
+    walkthrough: [
+      "Use a phased storyboard to explain manager actions at each milestone.",
+      "Attach visuals for coaching notes and learning progress.",
+      "Insert a challenge question after each phase to keep momentum game-like.",
+    ],
+    checkpoint: {
+      prompt: "Why include challenge questions between visuals?",
+      options: ["To reinforce understanding before advancing", "To hide unavailable actions", "To skip review checkpoints"],
+      answer: 0,
+    },
+    reward: 40,
+  },
+  {
+    id: "reward",
+    title: "Pay & Reward",
+    subtitle: "Connect work outcomes to compensation.",
+    objective: "Explain payroll, bonus, and rewards workflows with transparency and controls.",
+    visuals: ["Payroll readiness board", "Compensation statement", "Audit confirmation strip"],
+    walkthrough: [
+      "Map each visual to a policy checkpoint.",
+      "Contextualize calculations with plain-language annotations.",
+      "Prompt a checkpoint question that confirms the user can identify release criteria.",
+    ],
+    checkpoint: {
+      prompt: "Before payroll release, teams should verify:",
+      options: ["Approved inputs and validation checks", "Social post scheduling", "Supplier onboarding status"],
+      answer: 0,
+    },
+    reward: 45,
+  },
+  {
+    id: "retire",
+    title: "Exit & Retire",
+    subtitle: "Close the journey and capture insight.",
+    objective: "Handle offboarding, knowledge transfer, and retirement events with consistency.",
+    visuals: ["Exit checklist", "Knowledge handoff note", "Final archive confirmation"],
+    walkthrough: [
+      "Walk through final approvals in sequence with visual stamps.",
+      "Annotate transfer and archive expectations.",
+      "Use a final challenge question to validate full process understanding.",
+    ],
+    checkpoint: {
+      prompt: "The final node should always include:",
+      options: ["A complete offboarding confirmation", "Open candidate requisitions", "Pending learning enrollments"],
+      answer: 0,
+    },
+    reward: 50,
   },
 ];
 
@@ -262,6 +356,9 @@ const state = {
   developerQuestionIndex: 0,
   developerInsertIndex: "end",
   authGateEnabled: readAuthGateEnabled(),
+  processCurrentNodeIndex: 0,
+  processCompletedNodeIds: [],
+  processCheckpointResponses: {},
 };
 
 const navEl = document.getElementById("nav");
@@ -613,6 +710,154 @@ const renderSkills = () => {
       state.selectedLessonId = button.dataset.lessonId;
       navigate("/practice");
     });
+  });
+};
+
+const processNodeStatus = (index) => {
+  const node = processOverviewNodes[index];
+  if (!node) return "locked";
+  if (state.processCompletedNodeIds.includes(node.id)) return "done";
+  if (index === state.processCurrentNodeIndex) return "current";
+  return "locked";
+};
+
+const renderProcessOverview = () => {
+  const totalNodes = processOverviewNodes.length;
+  const safeIndex = Math.max(0, Math.min(state.processCurrentNodeIndex, totalNodes - 1));
+  state.processCurrentNodeIndex = safeIndex;
+
+  const activeNode = processOverviewNodes[safeIndex];
+  const activeStatus = processNodeStatus(safeIndex);
+  const selectedAnswer = state.processCheckpointResponses[activeNode.id];
+  const isComplete = state.processCompletedNodeIds.length === totalNodes;
+  const trackerProgress = Math.round((state.processCompletedNodeIds.length / totalNodes) * 100);
+
+  const tracker = processOverviewNodes
+    .map((node, index) => {
+      const status = processNodeStatus(index);
+      const isReachable = status !== "locked";
+      return `
+        <li>
+          <button class="overview-node ${status}" data-overview-node="${index}" ${isReachable ? "" : "disabled"}>
+            <span class="overview-node-index">${index + 1}</span>
+            <strong>${node.title}</strong>
+            <small>${status === "done" ? "Complete" : status === "current" ? "In progress" : "Locked"}</small>
+          </button>
+        </li>
+      `;
+    })
+    .join("");
+
+  const answerButtons = activeNode.checkpoint.options
+    .map((option, index) => {
+      const isPicked = selectedAnswer === index;
+      return `<button class="btn overview-answer ${isPicked ? "selected" : ""}" data-overview-answer="${index}">${option}</button>`;
+    })
+    .join("");
+
+  const feedback =
+    selectedAnswer === undefined
+      ? "Answer the checkpoint to unlock the next phase."
+      : selectedAnswer === activeNode.checkpoint.answer
+        ? "✅ Correct! Node cleared and progress advanced."
+        : "❌ Not quite. Recheck the walkthrough context and try again.";
+
+  renderShell(
+    "Process Overview Mode",
+    "Walk users through each process node with annotated visuals, contextual coaching, and gamified checkpoints.",
+    `<span class="process-badge">${trackerProgress}% journey complete</span>`,
+    `
+      <section class="panel process-overview-panel">
+        <header class="process-overview-head">
+          <div>
+            <p class="process-kicker">Guided walkthrough</p>
+            <h3>${activeNode.title}</h3>
+            <p>${activeNode.subtitle}</p>
+          </div>
+          <div class="process-avatar">🧭 You are here: Node ${safeIndex + 1}</div>
+        </header>
+
+        <div class="bar"><span style="width:${trackerProgress}%"></span></div>
+        <ol class="overview-node-tracker">${tracker}</ol>
+      </section>
+
+      <section class="panel process-overview-content">
+        <article>
+          <h3>Context for this phase</h3>
+          <p>${activeNode.objective}</p>
+          <ul class="process-walkthrough-list">
+            ${activeNode.walkthrough.map((step) => `<li>${step}</li>`).join("")}
+          </ul>
+        </article>
+        <article>
+          <h3>Visual storyboard</h3>
+          <div class="process-visual-grid">
+            ${activeNode.visuals
+              .map(
+                (label, index) => `
+                  <div class="process-visual-card">
+                    <div class="process-visual-frame">Screenshot ${index + 1}</div>
+                    <strong>${label}</strong>
+                    <small>Use annotations to explain what users should notice on this screen.</small>
+                  </div>
+                `,
+              )
+              .join("")}
+          </div>
+        </article>
+      </section>
+
+      <section class="panel process-overview-quiz ${activeStatus === "done" ? "done" : ""}">
+        <h3>Checkpoint challenge</h3>
+        <p>${activeNode.checkpoint.prompt}</p>
+        <div class="process-answer-grid">${answerButtons}</div>
+        <p class="feedback ${selectedAnswer === activeNode.checkpoint.answer ? "ok" : ""}">${feedback}</p>
+        <p class="process-reward">Reward for this node: +${activeNode.reward} Fusion Points</p>
+
+        <div class="process-controls">
+          <button class="btn" id="processPrev" ${safeIndex === 0 ? "disabled" : ""}>Previous node</button>
+          <button class="btn primary" id="processNext" ${activeStatus !== "done" || safeIndex >= totalNodes - 1 ? "disabled" : ""}>Next node</button>
+        </div>
+      </section>
+
+      ${
+        isComplete
+          ? `<section class="panel process-overview-finale"><h3>🏆 Process run complete</h3><p>You built a full visual and gamified walkthrough from Recruit to Retire.</p></section>`
+          : ""
+      }
+    `,
+  );
+
+  appEl.querySelectorAll("[data-overview-node]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.processCurrentNodeIndex = Number(button.dataset.overviewNode);
+      renderProcessOverview();
+    });
+  });
+
+  appEl.querySelectorAll("[data-overview-answer]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const selectedIndex = Number(button.dataset.overviewAnswer);
+      state.processCheckpointResponses[activeNode.id] = selectedIndex;
+
+      if (selectedIndex === activeNode.checkpoint.answer && !state.processCompletedNodeIds.includes(activeNode.id)) {
+        state.processCompletedNodeIds.push(activeNode.id);
+        addFusionPoints(activeNode.reward);
+        state.processCurrentNodeIndex = Math.min(safeIndex + 1, totalNodes - 1);
+      }
+
+      renderProcessOverview();
+    });
+  });
+
+  document.getElementById("processPrev")?.addEventListener("click", () => {
+    state.processCurrentNodeIndex = Math.max(0, safeIndex - 1);
+    renderProcessOverview();
+  });
+
+  document.getElementById("processNext")?.addEventListener("click", () => {
+    state.processCurrentNodeIndex = Math.min(totalNodes - 1, safeIndex + 1);
+    renderProcessOverview();
   });
 };
 
@@ -1365,6 +1610,7 @@ const renderRoute = () => {
   if (route === "/login") return renderLogin();
   if (route === "/register") return renderRegister();
   if (route === "/skills") return renderSkills();
+  if (route === "/process-overview") return renderProcessOverview();
   if (route === "/practice") return renderPractice();
   if (route === "/lesson-complete") return renderLessonComplete();
   if (route === "/review") return renderReview();
