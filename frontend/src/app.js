@@ -235,6 +235,7 @@ const state = {
   authError: null,
   developerSelectedLessonId: null,
   developerQuestionIndex: 0,
+  developerInsertIndex: "end",
   authGateEnabled: readAuthGateEnabled(),
 };
 
@@ -801,9 +802,11 @@ const renderDeveloper = () => {
   if (!customLessons.length) {
     state.developerSelectedLessonId = null;
     state.developerQuestionIndex = 0;
+    state.developerInsertIndex = "end";
   } else if (!customLessons.some((row) => row.lesson.id === state.developerSelectedLessonId)) {
     state.developerSelectedLessonId = customLessons[0].lesson.id;
     state.developerQuestionIndex = 0;
+    state.developerInsertIndex = "end";
   }
 
   const selectedLessonRow = customLessons.find((row) => row.lesson.id === state.developerSelectedLessonId) || null;
@@ -854,7 +857,7 @@ const renderDeveloper = () => {
               ${selectedQuestion.body ? `<p class="question-body">${selectedQuestion.body}</p>` : ""}
               ${
                 selectedQuestion.type === "informative"
-                  ? '<p class="feedback ok">Informative step</p>'
+                  ? '<p class="feedback ok">Knowledge break</p>'
                   : `<p class="feedback ok">Answer: ${selectedQuestion.answerText}</p>`
               }
             </div>
@@ -874,13 +877,34 @@ const renderDeveloper = () => {
       (question, index) => `
       <li>
         <button class="developer-question-jump ${index === safeQuestionIndex ? "active" : ""}" data-question-index="${index}">
-          <strong>Question ${index + 1}</strong>
+          <strong>${question.type === "informative" ? "Knowledge break" : "Question"} ${index + 1}</strong>
           <small>${question.title}</small>
         </button>
       </li>
     `,
     )
     .join("");
+
+  const selectedInsertIndex =
+    state.developerInsertIndex === "end"
+      ? selectedQuestions.length
+      : Math.max(0, Math.min(Number(state.developerInsertIndex), selectedQuestions.length));
+  state.developerInsertIndex = selectedInsertIndex >= selectedQuestions.length ? "end" : String(selectedInsertIndex);
+
+  const insertionSequence = selectedQuestions.length
+    ? selectedQuestions
+        .map((question, index) => {
+          const slotLabel = index + 1;
+          return `
+            <li><button class="developer-insert-slot ${String(selectedInsertIndex) === String(index) ? "active" : ""}" data-insert-index="${index}">+ Insert before ${question.type === "informative" ? "Knowledge break" : "Question"} ${slotLabel}</button></li>
+            <li class="developer-sequence-item">
+              <span class="developer-sequence-type">${question.type === "informative" ? "Knowledge break" : "Question"} ${slotLabel}</span>
+              <strong>${question.title}</strong>
+            </li>
+          `;
+        })
+        .join("")
+    : '<li><p class="empty-state">No content yet. Start by adding your first question or knowledge break.</p></li>';
 
   renderShell(
     "Developer Mode",
@@ -922,7 +946,12 @@ const renderDeveloper = () => {
             <label>Content type
               <select name="questionType" ${customLessons.length ? "" : "disabled"}>
                 <option value="question">Question</option>
-                <option value="informative">Informative step</option>
+                <option value="informative">Knowledge break</option>
+              </select>
+            </label>
+            <label>Insert at
+              <select name="insertIndex" ${customLessons.length ? "" : "disabled"}>
+                <option value="end">End of lesson</option>
               </select>
             </label>
             <label>Question title <input name="questionTitle" required placeholder="Who owns attrition dashboard governance?" /></label>
@@ -941,6 +970,9 @@ const renderDeveloper = () => {
       <section class="panel">
         <h3>Current questions</h3>
         ${questionRows ? `<ul class="developer-unit-list developer-question-list">${questionRows}</ul>` : '<p class="empty-state">Questions for the selected lesson will appear here.</p>'}
+        <h4 class="developer-sequence-heading">Insertion slots</h4>
+        <p class="empty-state">Choose a slot between questions and knowledge breaks, or use the end slot.</p>
+        <ul class="developer-sequence-list">${insertionSequence}<li><button class="developer-insert-slot ${state.developerInsertIndex === "end" ? "active" : ""}" data-insert-index="end">+ Insert at end of lesson</button></li></ul>
       </section>
 
       <section class="panel">
@@ -996,12 +1028,39 @@ const renderDeveloper = () => {
 
     state.developerSelectedLessonId = lessonId;
     state.developerQuestionIndex = 0;
+    state.developerInsertIndex = "end";
     saveCustomSections();
     form.reset();
     renderDeveloper();
   });
 
   const questionBuilderForm = document.getElementById("questionBuilderForm");
+  const questionLessonSelect = questionBuilderForm.querySelector('select[name="lessonId"]');
+  const insertIndexSelect = questionBuilderForm.querySelector('select[name="insertIndex"]');
+
+  const rebuildInsertOptions = (lessonId) => {
+    if (!insertIndexSelect) return;
+    const lesson = customSections
+      .flatMap((section) => section.lessons)
+      .find((item) => item.id === lessonId);
+    const questionsForLesson = lesson ? lessonQuestions(lesson) : [];
+    const options = [`<option value="end">End of lesson</option>`];
+
+    questionsForLesson.forEach((question, index) => {
+      const label = question.type === "informative" ? "knowledge break" : "question";
+      options.push(`<option value="${index}">Before ${label} ${index + 1}</option>`);
+    });
+
+    insertIndexSelect.innerHTML = options.join("");
+
+    const preferred = state.developerInsertIndex === "end" ? "end" : String(state.developerInsertIndex);
+    const hasPreferred = Array.from(insertIndexSelect.options).some((option) => option.value === preferred);
+    insertIndexSelect.value = hasPreferred ? preferred : "end";
+    state.developerInsertIndex = insertIndexSelect.value;
+  };
+
+  rebuildInsertOptions(questionLessonSelect?.value);
+
   questionBuilderForm.addEventListener("submit", (event) => {
     event.preventDefault();
     const form = event.currentTarget;
@@ -1023,6 +1082,12 @@ const renderDeveloper = () => {
       customLesson.questions = lessonQuestions(customLesson);
     }
 
+    const insertTarget = form.insertIndex.value;
+    const insertIndex =
+      insertTarget === "end"
+        ? customLesson.questions.length
+        : Math.max(0, Math.min(Number(insertTarget), customLesson.questions.length));
+
     const questionEntry =
       questionType === "informative"
         ? {
@@ -1037,24 +1102,39 @@ const renderDeveloper = () => {
             answerText: correctAnswer,
           };
 
-    customLesson.questions.push(questionEntry);
+    customLesson.questions.splice(insertIndex, 0, questionEntry);
 
     if (!customLesson.question) {
       customLesson.question = questionEntry;
     }
 
     state.developerSelectedLessonId = customLesson.id;
-    state.developerQuestionIndex = customLesson.questions.length - 1;
+    state.developerQuestionIndex = insertIndex;
+    state.developerInsertIndex = String(insertIndex + 1);
     saveCustomSections();
     form.reset();
     renderDeveloper();
   });
 
-  const questionLessonSelect = questionBuilderForm.querySelector('select[name="lessonId"]');
   questionLessonSelect?.addEventListener("change", (event) => {
     state.developerSelectedLessonId = event.target.value;
     state.developerQuestionIndex = 0;
+    state.developerInsertIndex = "end";
+    rebuildInsertOptions(event.target.value);
     renderDeveloper();
+  });
+
+  insertIndexSelect?.addEventListener("change", (event) => {
+    state.developerInsertIndex = event.target.value;
+    renderDeveloper();
+  });
+
+  appEl.querySelectorAll("[data-insert-index]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.developerInsertIndex = button.dataset.insertIndex;
+      if (insertIndexSelect) insertIndexSelect.value = state.developerInsertIndex;
+      renderDeveloper();
+    });
   });
 
   const previewPrev = document.getElementById("previewPrev");
