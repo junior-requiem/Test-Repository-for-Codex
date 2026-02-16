@@ -915,6 +915,17 @@ textarea {
   background: #e8f5ff;
 }
 
+.overview-answer.correct {
+  background: var(--success-tint);
+  border-color: var(--success);
+  animation: checkScale 250ms ease-out;
+}
+
+.overview-answer.wrong {
+  background: var(--error-tint);
+  border-color: var(--error);
+}
+
 .process-reward {
   font-weight: 700;
   color: var(--primary);
