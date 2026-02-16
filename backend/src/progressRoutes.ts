@@ -22,8 +22,8 @@ const getUserId = (req: Request<{ userId?: string }>): string | undefined => req
 export const registerProgressRoutes = (router: Router) => {
   router.get(
     "/progress",
-    withAuth((_req: AuthenticatedRequest, res) => {
-      const progress = getProgress(_req.auth.userId);
+    withAuth(async (_req: AuthenticatedRequest, res) => {
+      const progress = await getProgress(_req.auth.userId);
       res.json({
         progress,
         xpToNextLevel: getXpToNextLevel(progress.xp),
@@ -34,7 +34,7 @@ export const registerProgressRoutes = (router: Router) => {
   router.post(
     "/progress/lesson-complete",
     withAuth(
-      (
+      async (
         req: AuthenticatedRequest<{
           xpEarned: number;
           heartsChange?: number;
@@ -49,14 +49,14 @@ export const registerProgressRoutes = (router: Router) => {
           return;
         }
 
-        const currentProgress = getProgress(req.auth.userId);
+        const currentProgress = await getProgress(req.auth.userId);
         const { updatedProgress, levelUp } = applyLessonCompletion(currentProgress, {
           xpEarned,
           heartsChange,
           badgesEarned,
         });
 
-        setProgress(req.auth.userId, updatedProgress);
+        await setProgress(req.auth.userId, updatedProgress);
         res.json({
           progress: updatedProgress,
           xpToNextLevel: getXpToNextLevel(updatedProgress.xp),
