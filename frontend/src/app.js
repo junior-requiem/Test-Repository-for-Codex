@@ -404,26 +404,38 @@ const getAudioContext = () => {
   return audioContext;
 };
 
-const playTone = ({ frequency, type = "sine", duration = 0.12, gain = 0.06 }) => {
+const playTone = ({ frequency, type = "sine", duration = 0.12, gain = 0.06, detune = 0, delay = 0, pan = 0 }) => {
   const context = getAudioContext();
   if (!context) return;
 
-  const now = context.currentTime;
+  const now = context.currentTime + delay;
   const oscillator = context.createOscillator();
   const gainNode = context.createGain();
+  const panner = context.createStereoPanner ? context.createStereoPanner() : null;
 
   oscillator.type = type;
   oscillator.frequency.setValueAtTime(frequency, now);
+  oscillator.detune.setValueAtTime(detune, now);
 
   gainNode.gain.setValueAtTime(0.0001, now);
-  gainNode.gain.exponentialRampToValueAtTime(gain, now + 0.01);
+  gainNode.gain.exponentialRampToValueAtTime(gain, now + 0.012);
   gainNode.gain.exponentialRampToValueAtTime(0.0001, now + duration);
 
   oscillator.connect(gainNode);
-  gainNode.connect(context.destination);
+  if (panner) {
+    panner.pan.setValueAtTime(pan, now);
+    gainNode.connect(panner);
+    panner.connect(context.destination);
+  } else {
+    gainNode.connect(context.destination);
+  }
 
   oscillator.start(now);
   oscillator.stop(now + duration + 0.02);
+};
+
+const playToneSequence = (tones = []) => {
+  tones.forEach((tone) => playTone(tone));
 };
 
 const playRightSound = () => {
@@ -441,19 +453,27 @@ const playNavigationClick = () => {
 };
 
 const playProcessAdvanceClick = () => {
-  playTone({ frequency: 185, type: "triangle", duration: 0.015, gain: 0.012 });
-  setTimeout(() => playTone({ frequency: 145, type: "triangle", duration: 0.012, gain: 0.01 }), 14);
+  playToneSequence([
+    { frequency: 300, type: "triangle", duration: 0.03, gain: 0.02, pan: -0.15 },
+    { frequency: 390, type: "sine", duration: 0.026, gain: 0.018, delay: 0.03, pan: 0.15 },
+  ]);
 };
 
 const playProcessRightSound = () => {
-  playTone({ frequency: 420, type: "triangle", duration: 0.03, gain: 0.018 });
-  setTimeout(() => playTone({ frequency: 560, type: "triangle", duration: 0.03, gain: 0.02 }), 24);
-  setTimeout(() => playTone({ frequency: 720, type: "sine", duration: 0.028, gain: 0.018 }), 48);
+  playToneSequence([
+    { frequency: 440, type: "triangle", duration: 0.05, gain: 0.025, pan: -0.2 },
+    { frequency: 554, type: "triangle", duration: 0.06, gain: 0.028, delay: 0.045, pan: 0.2 },
+    { frequency: 740, type: "sine", duration: 0.08, gain: 0.022, delay: 0.09, detune: 5 },
+    { frequency: 1110, type: "sine", duration: 0.07, gain: 0.015, delay: 0.11, detune: -6 },
+  ]);
 };
 
 const playProcessWrongSound = () => {
-  playTone({ frequency: 300, type: "triangle", duration: 0.04, gain: 0.018 });
-  setTimeout(() => playTone({ frequency: 220, type: "triangle", duration: 0.045, gain: 0.018 }), 30);
+  playToneSequence([
+    { frequency: 280, type: "sawtooth", duration: 0.06, gain: 0.02, pan: 0.12 },
+    { frequency: 210, type: "triangle", duration: 0.075, gain: 0.022, delay: 0.045, pan: -0.08 },
+    { frequency: 160, type: "sine", duration: 0.08, gain: 0.012, delay: 0.09 },
+  ]);
 };
 
 const vibrateFeedback = (pattern) => {
@@ -900,7 +920,10 @@ const renderProcessOverview = () => {
             <h3>${activeNode.title}</h3>
             <p>${activeNode.subtitle}</p>
           </div>
-          <div class="process-avatar">🧭 Node ${state.processCurrentNodeIndex + 1} of ${totalNodes}</div>
+          <div class="process-session-pulse" aria-label="Session pulse">
+            <span>Session pulse</span>
+            <strong>${trackerProgress}% complete · Node ${state.processCurrentNodeIndex + 1} of ${totalNodes}</strong>
+          </div>
         </header>
 
         <div class="bar"><span style="width:${trackerProgress}%"></span></div>
@@ -908,25 +931,29 @@ const renderProcessOverview = () => {
       </section>
 
       <section class="panel process-overview-content process-overview-focus">
-        <h3>${activeNode.title}</h3>
+        <div class="process-overview-main">
+          <p class="process-kicker process-kicker-inline">Active node</p>
+          <h3>${activeNode.title}</h3>
         ${
           activeStep.type === "question"
             ? `
               <p class="process-objective">Checkpoint ${checkpointPlacementForNode(activeNode) === "middle" ? "(mid-node)" : "(end of node)"}</p>
-              <h4>${activeStep.prompt}</h4>
+              <h4 class="process-question-heading">${activeStep.prompt}</h4>
               <div class="process-answer-grid">${answerButtons}</div>
               <p class="feedback ${selectedAnswer === undefined ? "" : isAnswerCorrect ? "ok" : "bad"}">${feedback}</p>
             `
             : `
               <div class="process-visual-frame process-feature-image">${activeStep.screenshot}</div>
               <p class="process-objective">${activeNode.objective}</p>
-              <p>${activeStep.text}</p>
+              <p class="process-step-copy">${activeStep.text}</p>
             `
         }
 
-        <p class="process-reward">Node reward: +${activeNode.reward} Fusion Points</p>
+          <p class="process-reward">Node reward: +${activeNode.reward} Fusion Points</p>
+        </div>
 
         <div class="process-controls process-controls-single">
+          <p class="process-controls-meta">Step ${activeStepIndex + 1} of ${activeFlow.length}</p>
           <button class="btn primary" id="processNextStep" ${nextDisabled ? "disabled" : ""}>${nextButtonLabel}</button>
         </div>
       </section>
