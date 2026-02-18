@@ -5,8 +5,6 @@ Interactive single-page app with hash routes, Apple-style typography/layout, and
 ## Required Supabase configuration
 Set Supabase values with either build-time variables or runtime injection:
 
-For local development with build tooling, copy `frontend/.env.example` to `frontend/.env` and fill in your values.
-
 ### Option A: Build-time environment variables
 - `SUPABASE_URL` (or `VITE_SUPABASE_URL`)
 - `SUPABASE_ANON_KEY` (or `VITE_SUPABASE_ANON_KEY`)
