@@ -19,6 +19,8 @@
   --card-radius: 20px;
   --button-radius: 999px;
   --node-radius: 16px;
+  --font-display: "Plus Jakarta Sans", "Inter", "Avenir Next", "Segoe UI", -apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", Arial, sans-serif;
+  --font-body: "Inter", "Nunito", "Avenir Next", "Segoe UI", -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
 }
 
 * { box-sizing: border-box; }
@@ -30,7 +32,10 @@ body {
     radial-gradient(circle at 85% -15%, rgba(32, 153, 241, 0.25), transparent 45%),
     var(--surface);
   color: var(--text-primary);
-  font-family: "Nunito", "Avenir Next", "Segoe UI", -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Helvetica Neue", Arial, sans-serif;
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
   line-height: 1.4;
 }
 
@@ -48,6 +53,7 @@ body {
   margin: 0;
   font-size: 48px;
   font-weight: 800;
+  font-family: var(--font-display);
   letter-spacing: -0.02em;
   color: var(--primary);
   text-shadow: 0 4px 0 rgba(17, 105, 190, 0.12);
@@ -717,6 +723,7 @@ textarea {
 .process-overview-panel {
   display: grid;
   gap: var(--space-s);
+  background: linear-gradient(160deg, #ffffff, #f1f9ff 58%, #e9f6ff);
 }
 
 .process-overview-head {
@@ -746,14 +753,30 @@ textarea {
   color: var(--text-secondary);
 }
 
-.process-avatar {
+.process-session-pulse {
   align-self: start;
-  border-radius: 999px;
+  justify-self: end;
+  border-radius: 12px;
   border: 2px solid #cdeaff;
   background: #f7fcff;
-  color: var(--primary);
-  padding: 10px 14px;
-  font-weight: 700;
+  color: var(--primary-strong);
+  padding: 8px 12px;
+  display: grid;
+  gap: 2px;
+  text-align: right;
+}
+
+.process-session-pulse span {
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  font-weight: 800;
+}
+
+.process-session-pulse strong {
+  font-size: 13px;
+  font-weight: 800;
 }
 
 .overview-node-tracker {
@@ -792,6 +815,12 @@ textarea {
   text-align: center;
   gap: 6px;
   cursor: pointer;
+  transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
+}
+
+.overview-node:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 18px rgba(17, 105, 190, 0.15);
 }
 
 .overview-node.current {
@@ -828,18 +857,29 @@ textarea {
 
 .process-overview-content {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr;
   gap: var(--space-s);
 }
 
 .process-overview-focus {
-  grid-template-columns: 1fr;
+  align-items: start;
 }
 
 .process-overview-focus h3 {
   margin: 0;
   color: var(--primary);
   font-size: clamp(24px, 3vw, 34px);
+  font-family: var(--font-display);
+  letter-spacing: -0.015em;
+}
+
+.process-kicker-inline {
+  margin-bottom: 6px;
+}
+
+.process-overview-main {
+  display: grid;
+  gap: 12px;
 }
 
 .process-feature-image {
@@ -849,6 +889,13 @@ textarea {
 .process-objective {
   margin: 0;
   color: var(--text-secondary);
+  font-weight: 700;
+}
+
+.process-step-copy {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.6;
 }
 
 .process-walkthrough-list {
@@ -905,9 +952,12 @@ textarea {
 
 .overview-answer {
   border: 2px solid #cdeaff;
-  background: #f7fcff;
+  background: linear-gradient(180deg, #fbfeff, #eef8ff);
   text-align: left;
   box-shadow: 0 4px 0 #d3edff;
+  font-family: var(--font-body);
+  font-size: 15px;
+  letter-spacing: 0.005em;
 }
 
 .overview-answer.selected {
@@ -934,16 +984,33 @@ textarea {
 .process-controls {
   display: flex;
   justify-content: space-between;
+  align-items: center;
   gap: var(--space-s);
+}
+
+.process-controls-meta {
+  margin: 0;
+  color: var(--text-secondary);
+  font-weight: 700;
+  font-size: 14px;
 }
 
 .process-controls-single {
   justify-content: flex-end;
+  border-top: 1px dashed #bfdff8;
+  padding-top: 12px;
 }
 
 .process-overview-focus h4 {
   margin: 0;
   color: var(--primary);
+  font-family: var(--font-display);
+}
+
+.process-question-heading {
+  font-size: clamp(20px, 2.2vw, 28px);
+  line-height: 1.35;
+  letter-spacing: -0.01em;
 }
 
 .process-overview-finale {
@@ -1078,7 +1145,11 @@ body.focus-mode .app {
   }
 
   .process-controls {
-    flex-direction: column;
+    flex-wrap: wrap;
+  }
+
+  .process-controls-single {
+    justify-content: flex-end;
   }
 
   .process-exit-floating {
