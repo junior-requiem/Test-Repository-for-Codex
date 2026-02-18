@@ -9,6 +9,4 @@ Set the following environment variables for the backend:
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`
 
-For local development, copy `backend/.env.example` to `backend/.env` and populate the values before starting the backend.
-
 Apply the SQL schema in `supabase/schema.sql` to create persistence tables and indexes for progress and review flows.
