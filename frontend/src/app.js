@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { guidedWorkflows } from "./workflows.js";
 
 const readSupabaseConfig = () => {
   const runtimeConfig = window.__APP_CONFIG__ ?? {};
@@ -102,6 +103,7 @@ const AUTH_ONLY_ROUTES = new Set(["/login", "/register"]);
 const CUSTOM_SECTIONS_KEY = "learning-flow-custom-sections-v1";
 const CUSTOM_PROCESS_NODES_KEY = "learning-flow-custom-process-overview-nodes-v1";
 const DEVELOPER_DRAFT_KEY = "learning-flow-developer-draft-v1";
+const ACTIVE_WORKFLOW_KEY = "learning-flow-active-workflow-v1";
 
 const baseSections = [
   {
@@ -177,103 +179,8 @@ const baseSections = [
   },
 ];
 
-const baseProcessOverviewNodes = [
-  {
-    id: "recruit",
-    title: "Recruit & Onboard",
-    subtitle: "Attract and prepare the right talent.",
-    objective: "Build candidate pipeline, align role expectations, and prep the first-day experience.",
-    visuals: ["Role profile brief", "Candidate funnel snapshot", "Welcome checklist"],
-    walkthrough: [
-      "Open with the role objective and business priority.",
-      "Overlay key screenshots that show job req intake and approvals.",
-      "Add contextual notes that explain what to validate before onboarding starts.",
-    ],
-    checkpoint: {
-      prompt: "What makes this node complete?",
-      options: ["The onboarding checklist is approved", "The final payroll run is posted", "Offboarding surveys are sent"],
-      answer: 0,
-    },
-    checkpointPlacement: "end",
-    reward: 30,
-  },
-  {
-    id: "hire",
-    title: "Hire & Position",
-    subtitle: "Convert offers into active worker records.",
-    objective: "Capture legal employer, position, and assignment details with strong data quality.",
-    visuals: ["Offer letter capture", "Position assignment card", "Data validation panel"],
-    walkthrough: [
-      "Highlight each screen and annotate which fields are non-negotiable.",
-      "Show a callout layer for common setup mistakes.",
-      "Pause for a mini-quiz so users can identify the correct hiring sequence.",
-    ],
-    checkpoint: {
-      prompt: "Which detail is critical during hire processing?",
-      options: ["Legal employer and assignment", "Expense report category", "Supplier payment terms"],
-      answer: 0,
-    },
-    checkpointPlacement: "middle",
-    reward: 35,
-  },
-  {
-    id: "develop",
-    title: "Manage & Develop",
-    subtitle: "Guide performance, growth, and retention.",
-    objective: "Drive manager coaching, goal tracking, and role-readiness progression.",
-    visuals: ["Goal dashboard", "Learning plan timeline", "Performance note feed"],
-    walkthrough: [
-      "Use a phased storyboard to explain manager actions at each milestone.",
-      "Attach visuals for coaching notes and learning progress.",
-      "Insert a challenge question after each phase to keep momentum game-like.",
-    ],
-    checkpoint: {
-      prompt: "Why include challenge questions between visuals?",
-      options: ["To reinforce understanding before advancing", "To hide unavailable actions", "To skip review checkpoints"],
-      answer: 0,
-    },
-    checkpointPlacement: "middle",
-    reward: 40,
-  },
-  {
-    id: "reward",
-    title: "Pay & Reward",
-    subtitle: "Connect work outcomes to compensation.",
-    objective: "Explain payroll, bonus, and rewards workflows with transparency and controls.",
-    visuals: ["Payroll readiness board", "Compensation statement", "Audit confirmation strip"],
-    walkthrough: [
-      "Map each visual to a policy checkpoint.",
-      "Contextualize calculations with plain-language annotations.",
-      "Prompt a checkpoint question that confirms the user can identify release criteria.",
-    ],
-    checkpoint: {
-      prompt: "Before payroll release, teams should verify:",
-      options: ["Approved inputs and validation checks", "Social post scheduling", "Supplier onboarding status"],
-      answer: 0,
-    },
-    checkpointPlacement: "end",
-    reward: 45,
-  },
-  {
-    id: "retire",
-    title: "Exit & Retire",
-    subtitle: "Close the journey and capture insight.",
-    objective: "Handle offboarding, knowledge transfer, and retirement events with consistency.",
-    visuals: ["Exit checklist", "Knowledge handoff note", "Final archive confirmation"],
-    walkthrough: [
-      "Walk through final approvals in sequence with visual stamps.",
-      "Annotate transfer and archive expectations.",
-      "Use a final challenge question to validate full process understanding.",
-    ],
-    checkpoint: {
-      prompt: "The final node should always include:",
-      options: ["A complete offboarding confirmation", "Open candidate requisitions", "Pending learning enrollments"],
-      answer: 0,
-    },
-    checkpointPlacement: "end",
-    reward: 50,
-  },
-];
+const defaultWorkflow = guidedWorkflows[0];
+const baseProcessOverviewNodes = [...(defaultWorkflow?.nodes || [])];
 
 const loadCustomSections = () => {
   try {
@@ -301,6 +208,25 @@ const loadProcessOverviewNodes = () => {
 };
 
 let processOverviewNodes = loadProcessOverviewNodes();
+
+const loadActiveWorkflowId = () => {
+  const stored = localStorage.getItem(ACTIVE_WORKFLOW_KEY);
+  if (guidedWorkflows.some((workflow) => workflow.id === stored)) return stored;
+  return defaultWorkflow?.id;
+};
+
+const activeWorkflow = () =>
+  guidedWorkflows.find((workflow) => workflow.id === state.activeWorkflowId) || defaultWorkflow;
+
+const activeProcessOverviewNodes = () =>
+  state.activeWorkflowId === defaultWorkflow.id ? processOverviewNodes : activeWorkflow()?.nodes || [];
+
+const resetProcessOverviewProgress = () => {
+  state.processCurrentNodeIndex = 0;
+  state.processCompletedNodeIds = [];
+  state.processCheckpointResponses = {};
+  state.processNodeStepIndexById = {};
+};
 
 const saveProcessOverviewNodes = () => {
   localStorage.setItem(CUSTOM_PROCESS_NODES_KEY, JSON.stringify(processOverviewNodes));
@@ -384,6 +310,16 @@ const state = {
   processCompletedNodeIds: [],
   processCheckpointResponses: {},
   processNodeStepIndexById: {},
+  activeWorkflowId: loadActiveWorkflowId(),
+  processOverviewView: "menu",
+};
+
+const setActiveWorkflow = (workflowId) => {
+  if (!guidedWorkflows.some((workflow) => workflow.id === workflowId)) return;
+  if (state.activeWorkflowId === workflowId) return;
+  state.activeWorkflowId = workflowId;
+  localStorage.setItem(ACTIVE_WORKFLOW_KEY, workflowId);
+  resetProcessOverviewProgress();
 };
 
 const navEl = document.getElementById("nav");
@@ -774,12 +710,12 @@ const renderSkills = () => {
   });
 };
 
-const processNodeStatus = (index) => {
-  const node = processOverviewNodes[index];
+const processNodeStatus = (nodes, index) => {
+  const node = nodes[index];
   if (!node) return "locked";
   if (state.processCompletedNodeIds.includes(node.id)) return "done";
   if (index === 0) return "current";
-  const prev = processOverviewNodes[index - 1];
+  const prev = nodes[index - 1];
   if (prev && state.processCompletedNodeIds.includes(prev.id)) return "current";
   return "locked";
 };
@@ -816,7 +752,50 @@ const buildNodeFlow = (node) => {
 };
 
 const renderProcessOverview = () => {
-  const totalNodes = processOverviewNodes.length;
+  const workflow = activeWorkflow();
+  const nodes = activeProcessOverviewNodes();
+  const totalNodes = nodes.length;
+
+  if (state.processOverviewView !== "run") {
+    const workflowCards = guidedWorkflows
+      .map((item) => {
+        const nodeCount = Array.isArray(item.nodes) ? item.nodes.length : 0;
+        const selectedClass = item.id === state.activeWorkflowId ? "selected" : "";
+        return `
+          <article class="workflow-option ${selectedClass}">
+            <p class="process-kicker">Guided workflow</p>
+            <h3>${item.title}</h3>
+            <p>${item.description || "Checkpoint-driven process walkthrough."}</p>
+            <div class="workflow-option-meta">
+              <span>${item.product || "Oracle Fusion"}</span>
+              <span>${nodeCount} nodes</span>
+            </div>
+            <button class="btn primary" data-workflow-start="${item.id}">Start workflow</button>
+          </article>
+        `;
+      })
+      .join("");
+
+    appEl.innerHTML = `
+      <div class="focused-practice" aria-label="workflow options">
+        <section class="panel workflow-selector-panel">
+          <p class="process-kicker">Guided workflows</p>
+          <h2>Choose a workflow</h2>
+          <p>Select a guided path to launch a focused, checkpoint-based walkthrough.</p>
+        </section>
+        <section class="workflow-options-grid">${workflowCards}</section>
+      </div>
+    `;
+
+    appEl.querySelectorAll("[data-workflow-start]").forEach((button) => {
+      button.addEventListener("click", () => {
+        setActiveWorkflow(button.dataset.workflowStart);
+        state.processOverviewView = "run";
+        renderProcessOverview();
+      });
+    });
+    return;
+  }
 
   if (!totalNodes) {
     renderShell(
@@ -835,7 +814,7 @@ const renderProcessOverview = () => {
     return;
   }
 
-  const validNodeIds = new Set(processOverviewNodes.map((node) => node.id));
+  const validNodeIds = new Set(nodes.map((node) => node.id));
   state.processCompletedNodeIds = state.processCompletedNodeIds.filter((id) => validNodeIds.has(id));
   Object.keys(state.processCheckpointResponses).forEach((id) => {
     if (!validNodeIds.has(id)) delete state.processCheckpointResponses[id];
@@ -844,11 +823,11 @@ const renderProcessOverview = () => {
     if (!validNodeIds.has(id)) delete state.processNodeStepIndexById[id];
   });
 
-  const reachableIndex = processOverviewNodes.findIndex((_, index) => processNodeStatus(index) === "current");
+  const reachableIndex = nodes.findIndex((_, index) => processNodeStatus(nodes, index) === "current");
   const safeIndex = Math.max(0, Math.min(state.processCurrentNodeIndex, totalNodes - 1));
-  state.processCurrentNodeIndex = processNodeStatus(safeIndex) === "locked" ? Math.max(0, reachableIndex) : safeIndex;
+  state.processCurrentNodeIndex = processNodeStatus(nodes, safeIndex) === "locked" ? Math.max(0, reachableIndex) : safeIndex;
 
-  const activeNode = processOverviewNodes[state.processCurrentNodeIndex];
+  const activeNode = nodes[state.processCurrentNodeIndex];
   const activeFlow = buildNodeFlow(activeNode);
   const storedStep = Number(state.processNodeStepIndexById[activeNode.id] || 0);
   const activeStepIndex = Math.max(0, Math.min(storedStep, activeFlow.length - 1));
@@ -860,9 +839,9 @@ const renderProcessOverview = () => {
   const trackerProgress = Math.round((state.processCompletedNodeIds.length / totalNodes) * 100);
   const isComplete = state.processCompletedNodeIds.length === totalNodes;
 
-  const tracker = processOverviewNodes
+  const tracker = nodes
     .map((node, index) => {
-      const status = processNodeStatus(index);
+      const status = processNodeStatus(nodes, index);
       const isReachable = status !== "locked";
       const nodeIcon = status === "done" ? "✓" : status === "current" ? "▶" : index + 1;
       const connector = index < totalNodes - 1 ? '<span class="overview-node-connector" aria-hidden="true">›</span>' : "";
@@ -917,8 +896,9 @@ const renderProcessOverview = () => {
         <header class="process-overview-head">
           <div>
             <p class="process-kicker">Guided walkthrough</p>
-            <h3>${activeNode.title}</h3>
-            <p>${activeNode.subtitle}</p>
+            <h3>${workflow.title}</h3>
+            <p>${workflow.description || activeNode.subtitle}</p>
+            <button class="btn" id="workflowMenuButton" type="button">All workflows</button>
           </div>
           <div class="process-session-pulse" aria-label="Session pulse">
             <span>Session pulse</span>
@@ -970,6 +950,11 @@ const renderProcessOverview = () => {
     navigate("/skills");
   });
 
+  document.getElementById("workflowMenuButton")?.addEventListener("click", () => {
+    state.processOverviewView = "menu";
+    renderProcessOverview();
+  });
+
   appEl.querySelectorAll("[data-overview-node]").forEach((button) => {
     button.addEventListener("click", () => {
       state.processCurrentNodeIndex = Number(button.dataset.overviewNode);
@@ -1013,8 +998,8 @@ const renderProcessOverview = () => {
 
     const nextNodeIndex = Math.min(totalNodes - 1, state.processCurrentNodeIndex + 1);
     state.processCurrentNodeIndex = nextNodeIndex;
-    if (state.processNodeStepIndexById[processOverviewNodes[nextNodeIndex]?.id] === undefined) {
-      state.processNodeStepIndexById[processOverviewNodes[nextNodeIndex]?.id] = 0;
+    if (state.processNodeStepIndexById[nodes[nextNodeIndex]?.id] === undefined) {
+      state.processNodeStepIndexById[nodes[nextNodeIndex]?.id] = 0;
     }
 
     const runCompleted = state.processCompletedNodeIds.length === totalNodes;
@@ -1922,6 +1907,8 @@ const renderProfile = () => {
   });
 };
 
+let lastRoute = null;
+
 const renderRoute = () => {
   if (!state.authReady) {
     appEl.innerHTML = '<section class="panel"><p>Loading session...</p></section>';
@@ -1942,6 +1929,12 @@ const renderRoute = () => {
   }
 
   renderNav();
+
+  if (route === "/process-overview" && lastRoute !== "/process-overview") {
+    state.processOverviewView = "menu";
+  }
+
+  lastRoute = route;
 
   if (route === "/") return renderHome();
   if (route === "/login") return renderLogin();
