@@ -753,6 +753,64 @@ textarea {
   color: var(--text-secondary);
 }
 
+
+
+.workflow-selector-panel h2 {
+  margin: 4px 0;
+  font-size: 30px;
+  color: var(--primary);
+}
+
+.workflow-selector-panel p {
+  margin: 0;
+}
+
+.workflow-options-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: var(--space-s);
+}
+
+.workflow-option {
+  background: linear-gradient(160deg, #ffffff, #f4faff);
+  border: 2px solid #d8eeff;
+  border-radius: 18px;
+  padding: 18px;
+  display: grid;
+  gap: 10px;
+}
+
+.workflow-option.selected {
+  border-color: #8cc8f2;
+  box-shadow: 0 12px 30px rgba(41, 132, 191, 0.12);
+}
+
+.workflow-option h3 {
+  margin: 0;
+  font-size: 20px;
+  color: var(--primary);
+}
+
+.workflow-option p {
+  margin: 0;
+  color: var(--text-secondary);
+}
+
+.workflow-option-meta {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.workflow-option-meta span {
+  font-size: 12px;
+  font-weight: 700;
+  color: #1f4d70;
+  background: #e7f5ff;
+  border-radius: 999px;
+  padding: 4px 8px;
+}
+
 .process-session-pulse {
   align-self: start;
   justify-self: end;
