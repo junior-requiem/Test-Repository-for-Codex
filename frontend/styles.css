@@ -1075,6 +1075,114 @@ textarea {
   background: linear-gradient(180deg, #ffffff, #e9f9f0);
 }
 
+.process-completion-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: clamp(18px, 5vw, 42px);
+}
+
+.process-completion-backdrop {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at top, rgba(44, 143, 247, 0.32), rgba(10, 22, 38, 0.8));
+}
+
+.process-completion-content {
+  position: relative;
+  z-index: 1;
+  width: min(1000px, 100%);
+  max-height: 100%;
+  overflow: auto;
+  display: grid;
+  gap: var(--space-m);
+  padding: clamp(24px, 4vw, 40px);
+  background: linear-gradient(160deg, #ffffff, #eef8ff 45%, #e9f9f0);
+}
+
+.process-completion-content h2 {
+  margin: 0;
+  color: var(--primary);
+  font-size: clamp(30px, 4vw, 48px);
+}
+
+.process-completion-subtitle {
+  margin: 0;
+  color: var(--text-secondary);
+}
+
+.process-completion-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+}
+
+.process-completion-stats article {
+  border: 2px solid #cae9ff;
+  border-radius: 16px;
+  padding: 12px 14px;
+  background: #fff;
+  display: grid;
+  gap: 4px;
+}
+
+.process-completion-stats strong {
+  color: var(--primary);
+  font-size: clamp(24px, 3vw, 32px);
+  font-family: var(--font-display);
+}
+
+.process-completion-stats span {
+  color: var(--text-secondary);
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  font-weight: 700;
+}
+
+.process-learning-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 10px;
+}
+
+.process-learning-card {
+  border: 2px solid #cae9ff;
+  border-radius: 14px;
+  background: #fff;
+  padding: 12px;
+  display: grid;
+  gap: 6px;
+}
+
+.process-learning-card h4,
+.process-learning-card p {
+  margin: 0;
+}
+
+.process-learning-tag {
+  display: inline-flex;
+  width: fit-content;
+  border-radius: 999px;
+  padding: 3px 10px;
+  border: 1px solid #9fd5ff;
+  color: var(--primary);
+  background: #eef8ff;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 800;
+}
+
+.process-completion-actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
 body.focus-mode .nav,
 body.focus-mode .topbar {
   display: none;

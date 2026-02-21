@@ -751,6 +751,72 @@ const buildNodeFlow = (node) => {
   return flow;
 };
 
+const renderProcessOverviewCompletion = () => {
+  const totalNodes = processOverviewNodes.length;
+  const totalReward = processOverviewNodes.reduce((sum, node) => sum + (Number(node.reward) || 0), 0);
+
+  const learningHighlights = processOverviewNodes
+    .map((node) => {
+      const firstStep = Array.isArray(node.walkthrough) && node.walkthrough.length ? node.walkthrough[0] : node.objective;
+      return `
+        <article class="process-learning-card">
+          <p class="process-learning-tag">${node.title}</p>
+          <h4>${node.subtitle}</h4>
+          <p>${firstStep}</p>
+        </article>
+      `;
+    })
+    .join("");
+
+  appEl.innerHTML = `
+    <section class="process-completion-screen" aria-live="polite" aria-label="Process complete summary">
+      <div class="process-completion-backdrop" aria-hidden="true"></div>
+      <div class="process-completion-content panel">
+        <p class="process-kicker">Process overview complete</p>
+        <h2>🎉 Congratulations, ${state.profile.name}!</h2>
+        <p class="process-completion-subtitle">You cleared every node and locked in the full workflow. Here's your gamified recap before you jump back in.</p>
+
+        <div class="process-completion-stats">
+          <article>
+            <strong>${totalNodes}/${totalNodes}</strong>
+            <span>Nodes completed</span>
+          </article>
+          <article>
+            <strong>+${totalReward}</strong>
+            <span>Fusion points earned</span>
+          </article>
+          <article>
+            <strong>${Object.keys(state.processCheckpointResponses).length}</strong>
+            <span>Checkpoint wins</span>
+          </article>
+        </div>
+
+        <section>
+          <h3>What you learned</h3>
+          <div class="process-learning-grid">${learningHighlights}</div>
+        </section>
+
+        <div class="process-completion-actions">
+          <button class="btn" id="processReplay">Replay walkthrough</button>
+          <button class="btn primary" id="processBackToSkills">Back to learning map</button>
+        </div>
+      </div>
+    </section>
+  `;
+
+  document.getElementById("processReplay")?.addEventListener("click", () => {
+    state.processCurrentNodeIndex = 0;
+    state.processCompletedNodeIds = [];
+    state.processCheckpointResponses = {};
+    state.processNodeStepIndexById = {};
+    renderProcessOverview();
+  });
+
+  document.getElementById("processBackToSkills")?.addEventListener("click", () => {
+    navigate("/skills");
+  });
+};
+
 const renderProcessOverview = () => {
   const workflow = activeWorkflow();
   const nodes = activeProcessOverviewNodes();
@@ -938,11 +1004,6 @@ const renderProcessOverview = () => {
         </div>
       </section>
 
-      ${
-        isComplete
-          ? `<section class="panel process-overview-finale"><h3>🏆 Process run complete</h3><p>You walked the full process lifecycle in a gamified sequence.</p><p>Redirecting back to the learning map...</p></section>`
-          : ""
-      }
     </div>
   `;
 
@@ -1002,14 +1063,7 @@ const renderProcessOverview = () => {
       state.processNodeStepIndexById[nodes[nextNodeIndex]?.id] = 0;
     }
 
-    const runCompleted = state.processCompletedNodeIds.length === totalNodes;
     renderProcessOverview();
-
-    if (runCompleted) {
-      setTimeout(() => {
-        if (getPath() === "/process-overview") navigate("/skills");
-      }, 1100);
-    }
   });
 };
 
