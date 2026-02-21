@@ -401,6 +401,26 @@ body {
 }
 
 .feedback.ok { color: #2f8a13; }
+
+.status-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5em;
+  height: 1.5em;
+  margin-right: 8px;
+  border-radius: 999px;
+  color: #fff;
+  font-size: 0.95em;
+  font-weight: 900;
+  line-height: 1;
+  vertical-align: text-bottom;
+}
+
+.status-icon-correct { background: var(--success); }
+
+.status-icon-incorrect { background: var(--error); }
+
 .feedback.bad { color: #c7372f; }
 
 .lesson-panel.celebrate {
@@ -948,6 +968,24 @@ textarea {
 .process-answer-grid {
   display: grid;
   gap: 10px;
+}
+
+
+.question-feedback-panel {
+  border: 2px solid transparent;
+  border-radius: 14px;
+  padding: 12px;
+  transition: border-color 180ms ease, background-color 180ms ease;
+}
+
+.question-feedback-panel.question-correct,
+.lesson-panel.question-correct {
+  border-color: var(--success);
+  box-shadow: 0 0 0 3px rgba(52, 199, 89, 0.18);
+}
+
+.question-feedback-panel.question-correct {
+  background: rgba(52, 199, 89, 0.06);
 }
 
 .overview-answer {

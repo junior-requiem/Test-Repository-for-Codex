@@ -54,6 +54,9 @@ const supabase = createClient(supabaseConfig.supabaseUrl, supabaseConfig.supabas
 
 const AUTH_GATE_STORAGE_KEY = "learning-flow-auth-gate-enabled";
 
+const ICON_CORRECT = '<span class="status-icon status-icon-correct" aria-hidden="true">✓</span>';
+const ICON_INCORRECT = '<span class="status-icon status-icon-incorrect" aria-hidden="true">✕</span>';
+
 const parseBooleanSetting = (value) => {
   if (typeof value === "boolean") return value;
   if (typeof value === "number") return value !== 0;
@@ -898,8 +901,8 @@ const renderProcessOverview = () => {
       : selectedAnswer === undefined
         ? "Choose one answer."
         : isAnswerCorrect
-          ? "✅ Correct! Continue to the next step."
-          : "❌ Not quite. Try again to keep the run moving.";
+          ? `${ICON_CORRECT} Correct! Continue to the next step.`
+          : `${ICON_INCORRECT} Not quite. Try again to keep the run moving.`;
 
   const nextButtonLabel =
     activeStep.type === "question"
@@ -909,6 +912,7 @@ const renderProcessOverview = () => {
         : "Next step";
 
   const nextDisabled = activeStep.type === "question" && !isAnswerCorrect;
+  const questionStateClass = activeStep.type !== "question" ? "" : isAnswerCorrect ? "question-correct" : selectedAnswer === undefined ? "" : "question-incorrect";
 
   appEl.innerHTML = `
     <button class="btn process-exit-floating" id="processExit" aria-label="Exit walkthrough">← Exit walkthrough</button>
@@ -938,9 +942,11 @@ const renderProcessOverview = () => {
           activeStep.type === "question"
             ? `
               <p class="process-objective">Checkpoint ${checkpointPlacementForNode(activeNode) === "middle" ? "(mid-node)" : "(end of node)"}</p>
-              <h4 class="process-question-heading">${activeStep.prompt}</h4>
-              <div class="process-answer-grid">${answerButtons}</div>
-              <p class="feedback ${selectedAnswer === undefined ? "" : isAnswerCorrect ? "ok" : "bad"}">${feedback}</p>
+              <div class="question-feedback-panel ${questionStateClass}">
+                <h4 class="process-question-heading">${activeStep.prompt}</h4>
+                <div class="process-answer-grid">${answerButtons}</div>
+                <p class="feedback ${selectedAnswer === undefined ? "" : isAnswerCorrect ? "ok" : "bad"}">${feedback}</p>
+              </div>
             `
             : `
               <div class="process-visual-frame process-feature-image">${activeStep.screenshot}</div>
@@ -1141,7 +1147,7 @@ const renderPractice = () => {
     if (correct) {
       playRightSound();
       vibrateFeedback(35);
-      panel.classList.add("celebrate");
+      panel.classList.add("celebrate", "question-correct");
       spawnConfetti();
       feedback.textContent = "Nice work!";
       feedback.classList.add("ok");
@@ -1153,7 +1159,7 @@ const renderPractice = () => {
       continueWrap.className = "feedback-dock success";
       continueWrap.innerHTML = `
         <div>
-          <strong>✅ Correct!</strong>
+          <strong>${ICON_CORRECT} Correct!</strong>
           <p>You got this one right. Move on when you're ready.</p>
         </div>
         <button class="btn primary" id="continueLesson">Next question</button>
@@ -1177,6 +1183,7 @@ const renderPractice = () => {
     } else {
       playWrongSound();
       vibrateFeedback([35, 40, 35]);
+      panel.classList.remove("question-correct");
       panel.classList.add("shake");
       feedback.textContent = "Not quite. Try again.";
       feedback.classList.remove("ok");
@@ -1185,7 +1192,7 @@ const renderPractice = () => {
       continueWrap.className = "feedback-dock error";
       continueWrap.innerHTML = `
         <div>
-          <strong>❌ Incorrect.</strong>
+          <strong>${ICON_INCORRECT} Incorrect.</strong>
           <p>Heart lost. Remaining hearts: ${state.hearts}</p>
         </div>
         <button class="btn primary" id="nextAfterMiss">Next question</button>
