@@ -426,10 +426,7 @@ body {
 .lesson-panel.celebrate {
   border: 3px solid #34c759;
   box-shadow: 0 0 0 3px rgba(52, 199, 89, 0.15);
-  background:
-    radial-gradient(circle at 12% 18%, rgba(52, 199, 89, 0.15) 0 10px, transparent 11px),
-    radial-gradient(circle at 86% 26%, rgba(52, 199, 89, 0.18) 0 8px, transparent 9px),
-    var(--background);
+  background: var(--background);
 }
 
 .lesson-panel.error-flash {
