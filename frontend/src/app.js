@@ -55,6 +55,9 @@ const supabase = createClient(supabaseConfig.supabaseUrl, supabaseConfig.supabas
 
 const AUTH_GATE_STORAGE_KEY = "learning-flow-auth-gate-enabled";
 
+const ICON_CORRECT = '<span class="status-icon status-icon-correct" aria-hidden="true">✓</span>';
+const ICON_INCORRECT = '<span class="status-icon status-icon-incorrect" aria-hidden="true">✕</span>';
+
 const parseBooleanSetting = (value) => {
   if (typeof value === "boolean") return value;
   if (typeof value === "number") return value !== 0;
@@ -943,8 +946,8 @@ const renderProcessOverview = () => {
       : selectedAnswer === undefined
         ? "Choose one answer."
         : isAnswerCorrect
-          ? "✅ Correct! Continue to the next step."
-          : "❌ Not quite. Try again to keep the run moving.";
+          ? `${ICON_CORRECT} Correct! Continue to the next step.`
+          : `${ICON_INCORRECT} Not quite. Try again to keep the run moving.`;
 
   const nextButtonLabel =
     activeStep.type === "question"
@@ -954,6 +957,8 @@ const renderProcessOverview = () => {
         : "Next step";
 
   const nextDisabled = activeStep.type === "question" && !isAnswerCorrect;
+  const processFocusStateClass =
+    activeStep.type === "question" && selectedAnswer !== undefined && isAnswerCorrect ? "question-correct" : "";
 
   appEl.innerHTML = `
     <button class="btn process-exit-floating" id="processExit" aria-label="Exit walkthrough">← Exit walkthrough</button>
@@ -976,7 +981,7 @@ const renderProcessOverview = () => {
         <ol class="overview-node-tracker">${tracker}</ol>
       </section>
 
-      <section class="panel process-overview-content process-overview-focus">
+      <section class="panel process-overview-content process-overview-focus ${processFocusStateClass}">
         <div class="process-overview-main">
           <p class="process-kicker process-kicker-inline">Active node</p>
           <h3>${activeNode.title}</h3>
@@ -1192,7 +1197,7 @@ const renderPractice = () => {
       continueWrap.className = "feedback-dock success";
       continueWrap.innerHTML = `
         <div>
-          <strong>✅ Correct!</strong>
+          <strong>${ICON_CORRECT} Correct!</strong>
           <p>You got this one right. Move on when you're ready.</p>
         </div>
         <button class="btn primary" id="continueLesson">Next question</button>
@@ -1224,7 +1229,7 @@ const renderPractice = () => {
       continueWrap.className = "feedback-dock error";
       continueWrap.innerHTML = `
         <div>
-          <strong>❌ Incorrect.</strong>
+          <strong>${ICON_INCORRECT} Incorrect.</strong>
           <p>Heart lost. Remaining hearts: ${state.hearts}</p>
         </div>
         <button class="btn primary" id="nextAfterMiss">Next question</button>
