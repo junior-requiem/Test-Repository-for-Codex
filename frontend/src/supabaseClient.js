@@ -7,4 +7,8 @@ if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
   console.warn("Supabase config missing. Set window.SUPABASE_URL and window.SUPABASE_ANON_KEY before loading the app.");
 }
 
-export const supabase = createClient(SUPABASE_URL || "https://example.supabase.co", SUPABASE_ANON_KEY || "public-anon-key");
+if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+  throw new Error("Missing Supabase configuration. Set window.SUPABASE_URL and window.SUPABASE_ANON_KEY.");
+}
+
+export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
