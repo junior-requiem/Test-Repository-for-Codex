@@ -9,6 +9,8 @@ Set Supabase values with either build-time variables or runtime injection:
 - `SUPABASE_URL` (or `VITE_SUPABASE_URL`)
 - `SUPABASE_ANON_KEY` (or `VITE_SUPABASE_ANON_KEY`)
 
+Use `frontend/.env.example` as a template for local `.env` values.
+
 ### Option B: Runtime injected configuration
 In `frontend/index.html`, define:
 

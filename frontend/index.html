@@ -21,9 +21,11 @@
 
     <script>
       // Optional runtime config injection for static hosting.
+      // Set these values from deployment-time env vars or from a hosting template.
+      // Example:
       window.__APP_CONFIG__ = {
-      SUPABASE_URL: "https://yxjrnqsnzwxgyzfqdgtp.supabase.co",
-      SUPABASE_ANON_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl4anJucXNuend4Z3l6ZnFkZ3RwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA5MjIwNDEsImV4cCI6MjA4NjQ5ODA0MX0.pA0UzIXPLkpC_UNR2P_Zl25HPiVXxY0WK26FhnW9wQQ"
+        SUPABASE_URL: "https://yxjrnqsnzwxgyzfqdgtp.supabase.co",
+        SUPABASE_ANON_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl4anJucXNuend4Z3l6ZnFkZ3RwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA5MjIwNDEsImV4cCI6MjA4NjQ5ODA0MX0.pA0UzIXPLkpC_UNR2P_Zl25HPiVXxY0WK26FhnW9wQQ"
       };
     </script>
     <script type="module" src="./src/app.js"></script>

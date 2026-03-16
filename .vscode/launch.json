@@ -1,0 +1,13 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "chrome",
+            "request": "launch",
+            "name": "Frontend (local server)",
+            "url": "http://localhost:4173",
+            "webRoot": "${workspaceFolder}",
+            "preLaunchTask": "serve-frontend"
+        }
+    ]
+}

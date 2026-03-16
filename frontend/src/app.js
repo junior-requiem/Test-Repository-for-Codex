@@ -57,6 +57,9 @@ const AUTH_GATE_STORAGE_KEY = "learning-flow-auth-gate-enabled";
 
 const ICON_CORRECT = '<span class="status-icon status-icon-correct" aria-hidden="true">✓</span>';
 const ICON_INCORRECT = '<span class="status-icon status-icon-incorrect" aria-hidden="true">✕</span>';
+const LESSON_XP_REWARD = 100;
+const XP_PER_LEVEL = 500;
+const MIN_QUESTIONS_PER_LESSON = 5;
 
 const parseBooleanSetting = (value) => {
   if (typeof value === "boolean") return value;
@@ -229,6 +232,7 @@ const resetProcessOverviewProgress = () => {
   state.processCompletedNodeIds = [];
   state.processCheckpointResponses = {};
   state.processNodeStepIndexById = {};
+  state.processFlowAnimation = null;
 };
 
 const saveProcessOverviewNodes = () => {
@@ -266,18 +270,42 @@ const saveCustomSections = () => {
 const toDisplayQuestion = (question) => ({
   type: question.type || "question",
   title: question.title || question.prompt || "Question",
+  prompt: question.prompt || "",
   body: question.body || "",
   answerText: question.answerText || "",
+  options: Array.isArray(question.options) ? question.options : undefined,
+  answer: Number.isInteger(question.answer) ? question.answer : undefined,
 });
 
+const buildAutofillQuestions = (lessonTitle = "Lesson") =>
+  Array.from({ length: MIN_QUESTIONS_PER_LESSON }, (_, index) => ({
+    type: "question",
+    title: `${lessonTitle} Checkpoint ${index + 1}`,
+    body: `Testing question ${index + 1} for ${lessonTitle}.`,
+    answerText: "ready",
+  }));
+
 const lessonQuestions = (lesson) => {
+  const baseQuestions = [];
   if (Array.isArray(lesson.questions) && lesson.questions.length) {
-    return lesson.questions.map(toDisplayQuestion);
+    baseQuestions.push(...lesson.questions.map(toDisplayQuestion));
+  } else if (lesson.question) {
+    baseQuestions.push(toDisplayQuestion(lesson.question));
   }
-  if (lesson.question) {
-    return [toDisplayQuestion(lesson.question)];
+
+  if (!baseQuestions.length) return buildAutofillQuestions(lesson.title || "Lesson");
+  if (baseQuestions.length >= MIN_QUESTIONS_PER_LESSON) return baseQuestions;
+
+  const paddedQuestions = [...baseQuestions];
+  const templateQuestion = baseQuestions[baseQuestions.length - 1];
+  while (paddedQuestions.length < MIN_QUESTIONS_PER_LESSON) {
+    paddedQuestions.push({
+      ...templateQuestion,
+      title: `${templateQuestion.title} (Review ${paddedQuestions.length + 1})`,
+      prompt: templateQuestion.prompt || templateQuestion.title || "Review question",
+    });
   }
-  return [];
+  return paddedQuestions;
 };
 
 const sections = () => [...baseSections, ...customSections];
@@ -286,6 +314,7 @@ const lessons = () =>
   sections().flatMap((section) =>
     section.lessons.map((lesson) => ({
       ...lesson,
+      fusionPoints: LESSON_XP_REWARD,
       sectionId: section.id,
       sectionTitle: section.title,
       sectionSubtitle: section.subtitle,
@@ -308,18 +337,147 @@ const state = {
   developerSelectedLessonId: null,
   developerQuestionIndex: 0,
   developerInsertIndex: "end",
+  developerViewMode: "overview",
+  developerSaveNotice: "",
+  lessonQuestionIndexById: {},
+  lessonMapAnimation: null,
   authGateEnabled: readAuthGateEnabled(),
   processCurrentNodeIndex: 0,
   processCompletedNodeIds: [],
   processCheckpointResponses: {},
   processNodeStepIndexById: {},
+  processFlowAnimation: null,
   activeWorkflowId: loadActiveWorkflowId(),
   processOverviewView: "menu",
 };
 
-const setActiveWorkflow = (workflowId) => {
+const defaultProgressState = {
+  hearts: 4,
+  fusionPoints: 185,
+  level: 2,
+  implementationStreak: 9,
+};
+
+const resetProgressState = () => {
+  state.hearts = defaultProgressState.hearts;
+  state.fusionPoints = defaultProgressState.fusionPoints;
+  state.level = defaultProgressState.level;
+  state.implementationStreak = defaultProgressState.implementationStreak;
+  state.attempts = [];
+};
+
+const resetLessonsForTesting = () => {
+  state.completed = [];
+  state.attempts = [];
+  state.lastCompletion = null;
+  state.lessonQuestionIndexById = {};
+  state.selectedLessonId = lessons()[0]?.id || state.selectedLessonId;
+  state.hearts = defaultProgressState.hearts;
+  state.fusionPoints = defaultProgressState.fusionPoints;
+  state.level = defaultProgressState.level;
+  state.implementationStreak = defaultProgressState.implementationStreak;
+};
+
+const getCurrentUserId = () => state.session?.user?.id ?? null;
+
+const persistProgress = async () => {
+  const userId = getCurrentUserId();
+  if (!userId) return;
+
+  const payload = {
+    user_id: userId,
+    xp: Math.max(0, Math.round(state.fusionPoints)),
+    level: Math.max(1, Math.round(state.level)),
+    streak_count: Math.max(0, Math.round(state.implementationStreak)),
+    last_active_date: new Date().toISOString(),
+    hearts: Math.max(0, Math.round(state.hearts)),
+    badges: [],
+  };
+
+  try {
+    const { error } = await supabase.from("user_progress").upsert(payload, { onConflict: "user_id" });
+    if (error) {
+      console.error("Failed to persist user progress", error);
+    }
+  } catch (error) {
+    console.error("Failed to persist user progress", error);
+  }
+};
+
+const persistQuestionAttempt = async ({ questionId, skillId, correct, timeToCompleteMs }) => {
+  const userId = getCurrentUserId();
+  if (!userId) return;
+
+  const payload = {
+    user_id: userId,
+    question_id: questionId,
+    skill_id: skillId,
+    correct,
+    time_to_complete_ms: Math.max(0, Math.round(timeToCompleteMs || 0)),
+    attempted_at: new Date().toISOString(),
+  };
+
+  try {
+    const { error } = await supabase.from("question_attempts").insert(payload);
+    if (error) {
+      console.error("Failed to persist question attempt", error);
+    }
+  } catch (error) {
+    console.error("Failed to persist question attempt", error);
+  }
+};
+
+const loadPersistedUserState = async () => {
+  const userId = getCurrentUserId();
+  if (!userId) {
+    resetProgressState();
+    return;
+  }
+
+  const [{ data: progress, error: progressError }, { data: attempts, error: attemptsError }] = await Promise.all([
+    supabase
+      .from("user_progress")
+      .select("xp,level,streak_count,hearts")
+      .eq("user_id", userId)
+      .maybeSingle(),
+    supabase
+      .from("question_attempts")
+      .select("question_id,correct,attempted_at")
+      .eq("user_id", userId)
+      .order("attempted_at", { ascending: false })
+      .limit(200),
+  ]);
+
+  if (progressError) {
+    console.error("Failed to load persisted progress", progressError);
+  }
+
+  if (attemptsError) {
+    console.error("Failed to load persisted attempts", attemptsError);
+  }
+
+  if (progress) {
+    state.fusionPoints = Number.isFinite(progress.xp) ? progress.xp : state.fusionPoints;
+    state.level = Number.isFinite(progress.level) ? progress.level : state.level;
+    state.implementationStreak = Number.isFinite(progress.streak_count)
+      ? progress.streak_count
+      : state.implementationStreak;
+    state.hearts = Number.isFinite(progress.hearts) ? progress.hearts : state.hearts;
+  }
+
+  state.attempts = (attempts || []).map((attempt) => ({
+    lessonId: attempt.question_id,
+    correct: Boolean(attempt.correct),
+    at: attempt.attempted_at || new Date().toISOString(),
+  }));
+};
+
+const setActiveWorkflow = (workflowId, { resetProgress = false } = {}) => {
   if (!guidedWorkflows.some((workflow) => workflow.id === workflowId)) return;
-  if (state.activeWorkflowId === workflowId) return;
+  if (state.activeWorkflowId === workflowId) {
+    if (resetProgress) resetProcessOverviewProgress();
+    return;
+  }
   state.activeWorkflowId = workflowId;
   localStorage.setItem(ACTIVE_WORKFLOW_KEY, workflowId);
   resetProcessOverviewProgress();
@@ -450,7 +608,7 @@ const nextLessonId = (id) => {
   return orderedLessons[idx + 1].id;
 };
 
-const nextLevelTarget = () => state.level * 120;
+const nextLevelTarget = () => state.level * XP_PER_LEVEL;
 const addFusionPoints = (value) => {
   state.fusionPoints += Math.max(0, value);
   while (state.fusionPoints >= nextLevelTarget()) {
@@ -475,7 +633,7 @@ const quests = () => {
   const completedLessons = state.completed.length;
   return [
     { label: "Complete 2 lessons", value: Math.min(completedLessons / 2, 1) },
-    { label: "Earn 100 Fusion Points", value: Math.min(state.fusionPoints / 100, 1) },
+    { label: "Earn 100 XP", value: Math.min(state.fusionPoints / 100, 1) },
     { label: "Keep 5 hearts", value: state.hearts >= 5 ? 1 : state.hearts / 5 },
   ];
 };
@@ -514,7 +672,7 @@ const renderRightRail = () => {
       <section class="panel rail-card">
         <h3>Progress</h3>
         <div class="metric-list">
-          <span>⚡ ${state.fusionPoints} Fusion Points</span>
+          <span>⚡ ${state.fusionPoints} XP</span>
           <span>🔥 ${state.implementationStreak} day streak</span>
           <span>💗 ${state.hearts} hearts</span>
         </div>
@@ -663,47 +821,82 @@ const renderRegister = () => {
   document.getElementById("goLogin").addEventListener("click", () => navigate("/login"));
 };
 
-const renderSectionHeader = (section) => `
+const renderSectionHeader = (section, sectionIndex, completedCount, totalCount) => `
   <div class="section-banner ${section.color}">
-    <div>
+    <div class="section-banner-copy">
       <span>${section.title.toUpperCase()}</span>
       <h3>${section.subtitle}</h3>
+    </div>
+    <div class="section-banner-meta">
+      <p>Unit ${sectionIndex + 1}</p>
+      <strong>${completedCount}/${totalCount} Complete</strong>
     </div>
   </div>
 `;
 
-const renderNode = (lesson, index) => {
+const renderNode = (lesson, index, totalLessons) => {
   const side = index % 2 === 0 ? "left" : "right";
   const status = statusForLesson(lesson.id);
-  const symbol = status === "done" ? "✓" : status === "current" ? "★" : "🔒";
+  const symbol = status === "done" ? "&#10003;" : status === "current" ? "&#9733;" : "&#128274;";
+  const isAnimatedCompletion = state.lessonMapAnimation?.completedLessonId === lesson.id;
+  const isAnimatedUnlock = state.lessonMapAnimation?.nextLessonId === lesson.id;
+  const isLast = index === totalLessons - 1;
+  const nodeStatusLabel = status === "done" ? "Completed" : status === "current" ? "Next Lesson" : "Locked";
+  const nodeClasses = `lesson-node ${status}${isAnimatedCompletion ? " completion-flash" : ""}${isAnimatedUnlock ? " unlock-flash" : ""}`;
+  const segmentState = status === "done" ? "complete" : status === "current" ? "active" : "upcoming";
+  const segmentClasses = `path-segment sway-${side} ${segmentState}${isAnimatedUnlock ? " advance-flow" : ""}`;
+  const segmentPath =
+    side === "left"
+      ? "M 500 0 C 500 42, 280 92, 280 147 C 280 202, 500 252, 500 294"
+      : "M 500 0 C 500 42, 720 92, 720 147 C 720 202, 500 252, 500 294";
   return `
-    <div class="path-row ${side}">
-      <div class="path-rail ${index === 0 ? "hidden" : ""}"></div>
-      <button class="lesson-node ${status}" data-lesson-id="${lesson.id}" ${status === "locked" ? "disabled" : ""} aria-label="${lesson.title}">${symbol}</button>
+    <div class="path-row ${side} ${isAnimatedCompletion ? "completion-row" : ""} ${isAnimatedUnlock ? "unlock-row" : ""}">
+      ${!isLast ? `
+      <svg class="${segmentClasses}" viewBox="0 0 1000 294" preserveAspectRatio="none" aria-hidden="true">
+        <path class="segment-stroke" d="${segmentPath}" />
+      </svg>
+      ` : ""}
+      <button class="${nodeClasses}" data-lesson-id="${lesson.id}" ${status === "locked" ? "disabled" : ""} aria-label="Lesson ${index + 1}: ${lesson.title}">
+        <span class="lesson-node-step">${index + 1}</span>
+        <span class="lesson-node-icon" aria-hidden="true">${symbol}</span>
+      </button>
       <div class="node-caption ${status}">
-        <strong>${lesson.title}</strong>
-        <small>${lesson.description}</small>
+        <p class="node-kicker">Lesson ${index + 1}</p>
+        <strong class="node-title">${lesson.title}</strong>
+        <small class="node-subtitle">${lesson.description}</small>
+        <span class="node-state-pill">${nodeStatusLabel}</span>
       </div>
-      ${status === "current" ? '<div class="start-pill">START</div>' : ""}
+      ${status === "current" ? '<div class="start-pill">Current Route</div>' : ""}
     </div>
   `;
 };
 
 const renderSkills = () => {
   const allLessons = lessons();
+  const totalLessons = allLessons.length;
   const sectionBlocks = sections()
-    .map((section) => {
+    .map((section, sectionIndex) => {
       const sectionLessons = allLessons.filter((lesson) => lesson.sectionId === section.id);
+      const sectionCompleted = sectionLessons.filter((lesson) => state.completed.includes(lesson.id)).length;
       return `
-        ${renderSectionHeader(section)}
+        ${renderSectionHeader(section, sectionIndex, sectionCompleted, sectionLessons.length)}
         <section class="path-block">
-          ${sectionLessons.map((lesson, i) => renderNode(lesson, i)).join("")}
+          ${sectionLessons.map((lesson) => renderNode(lesson, lessonIndex(lesson.id), totalLessons)).join("")}
         </section>
       `;
     })
     .join("");
 
   renderShell("Learn", "Only one next lesson is active.", null, sectionBlocks);
+
+  if (state.lessonMapAnimation) {
+    const animationStamp = state.lessonMapAnimation.stamp;
+    setTimeout(() => {
+      if (state.lessonMapAnimation?.stamp !== animationStamp) return;
+      state.lessonMapAnimation = null;
+      if (getPath() === "/skills") renderSkills();
+    }, 1800);
+  }
 
   appEl.querySelectorAll("[data-lesson-id]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -721,6 +914,24 @@ const processNodeStatus = (nodes, index) => {
   const prev = nodes[index - 1];
   if (prev && state.processCompletedNodeIds.includes(prev.id)) return "current";
   return "locked";
+};
+
+const triggerProcessFlowAnimation = (fromIndex, toIndex) => {
+  if (!Number.isInteger(fromIndex) || !Number.isInteger(toIndex) || toIndex <= fromIndex) {
+    state.processFlowAnimation = null;
+    return;
+  }
+
+  const stamp = Date.now();
+  state.processFlowAnimation = { fromIndex, toIndex, stamp };
+
+  setTimeout(() => {
+    if (state.processFlowAnimation?.stamp !== stamp) return;
+    state.processFlowAnimation = null;
+    if (getPath() === "/process-overview" && state.processOverviewView === "run") {
+      renderProcessOverview();
+    }
+  }, 820);
 };
 
 const checkpointPlacementForNode = (node) => {
@@ -754,11 +965,11 @@ const buildNodeFlow = (node) => {
   return flow;
 };
 
-const renderProcessOverviewCompletion = () => {
-  const totalNodes = processOverviewNodes.length;
-  const totalReward = processOverviewNodes.reduce((sum, node) => sum + (Number(node.reward) || 0), 0);
+const renderProcessOverviewCompletion = (nodes) => {
+  const totalNodes = nodes.length;
+  const totalReward = nodes.reduce((sum, node) => sum + (Number(node.reward) || 0), 0);
 
-  const learningHighlights = processOverviewNodes
+  const learningHighlights = nodes
     .map((node) => {
       const firstStep = Array.isArray(node.walkthrough) && node.walkthrough.length ? node.walkthrough[0] : node.objective;
       return `
@@ -808,10 +1019,7 @@ const renderProcessOverviewCompletion = () => {
   `;
 
   document.getElementById("processReplay")?.addEventListener("click", () => {
-    state.processCurrentNodeIndex = 0;
-    state.processCompletedNodeIds = [];
-    state.processCheckpointResponses = {};
-    state.processNodeStepIndexById = {};
+    resetProcessOverviewProgress();
     renderProcessOverview();
   });
 
@@ -858,7 +1066,7 @@ const renderProcessOverview = () => {
 
     appEl.querySelectorAll("[data-workflow-start]").forEach((button) => {
       button.addEventListener("click", () => {
-        setActiveWorkflow(button.dataset.workflowStart);
+        setActiveWorkflow(button.dataset.workflowStart, { resetProgress: true });
         state.processOverviewView = "run";
         renderProcessOverview();
       });
@@ -902,24 +1110,35 @@ const renderProcessOverview = () => {
   const activeStepIndex = Math.max(0, Math.min(storedStep, activeFlow.length - 1));
   state.processNodeStepIndexById[activeNode.id] = activeStepIndex;
   const activeStep = activeFlow[activeStepIndex];
+  const isQuestionStep = activeStep.type === "question";
 
   const selectedAnswer = state.processCheckpointResponses[activeNode.id];
-  const isAnswerCorrect = selectedAnswer === activeStep.answer;
+  const hasSelectedAnswer = selectedAnswer !== undefined;
+  const isAnswerCorrect = isQuestionStep && hasSelectedAnswer && selectedAnswer === activeStep.answer;
   const trackerProgress = Math.round((state.processCompletedNodeIds.length / totalNodes) * 100);
   const isComplete = state.processCompletedNodeIds.length === totalNodes;
+  const flowFromIndex = state.processFlowAnimation?.fromIndex;
+  const flowToIndex = state.processFlowAnimation?.toIndex;
+
+  if (isComplete) {
+    renderProcessOverviewCompletion(nodes);
+    return;
+  }
 
   const tracker = nodes
     .map((node, index) => {
       const status = processNodeStatus(nodes, index);
       const isReachable = status !== "locked";
+      const isFlowTarget = flowToIndex === index;
+      const isFlowConnector = flowFromIndex === index && flowToIndex === index + 1;
       const nodeIcon = status === "done" ? "✓" : status === "current" ? "▶" : index + 1;
-      const connector = index < totalNodes - 1 ? '<span class="overview-node-connector" aria-hidden="true">›</span>' : "";
+      const connectorClass = `overview-node-connector${isFlowConnector ? " flow-active" : ""}`;
+      const connector = index < totalNodes - 1 ? `<span class="${connectorClass}" aria-hidden="true">›</span>` : "";
       return `
         <li class="overview-node-item">
-          <button class="overview-node ${status}" data-overview-node="${index}" ${isReachable ? "" : "disabled"}>
+          <button class="overview-node ${status} ${isFlowTarget ? "flow-target" : ""}" data-overview-node="${index}" aria-label="Node ${index + 1}: ${node.title} (${status === "done" ? "Complete" : status === "current" ? "In progress" : "Locked"})" ${isReachable ? "" : "disabled"}>
             <span class="overview-node-index">${nodeIcon}</span>
-            <strong>${node.title}</strong>
-            <small>${status === "done" ? "Complete" : status === "current" ? "In progress" : "Locked"}</small>
+            <span class="overview-node-title">${node.title}</span>
           </button>
           ${connector}
         </li>
@@ -928,7 +1147,7 @@ const renderProcessOverview = () => {
     .join("");
 
   const answerButtons =
-    activeStep.type === "question"
+    isQuestionStep
       ? activeStep.options
           .map((option, index) => {
             const isPicked = selectedAnswer === index;
@@ -941,49 +1160,53 @@ const renderProcessOverview = () => {
       : "";
 
   const feedback =
-    activeStep.type !== "question"
+    !isQuestionStep
       ? ""
-      : selectedAnswer === undefined
+      : !hasSelectedAnswer
         ? "Choose one answer."
         : isAnswerCorrect
           ? `${ICON_CORRECT} Correct! Continue to the next step.`
           : `${ICON_INCORRECT} Not quite. Try again to keep the run moving.`;
 
   const nextButtonLabel =
-    activeStep.type === "question"
-      ? "Continue"
+    isQuestionStep
+      ? hasSelectedAnswer && !isAnswerCorrect
+        ? "Try again"
+        : "Continue"
       : activeStepIndex >= activeFlow.length - 1
         ? "Finish node"
         : "Next step";
 
-  const nextDisabled = activeStep.type === "question" && !isAnswerCorrect;
+  const nextDisabled = isQuestionStep && !hasSelectedAnswer;
   const processFocusStateClass =
-    activeStep.type === "question" && selectedAnswer !== undefined && isAnswerCorrect ? "question-correct" : "";
+    isQuestionStep && hasSelectedAnswer && isAnswerCorrect ? "question-correct" : "";
 
   appEl.innerHTML = `
     <button class="btn process-exit-floating" id="processExit" aria-label="Exit walkthrough">← Exit walkthrough</button>
+    <button class="btn process-workflows-floating" id="workflowMenuButton" type="button" aria-label="Open workflows">All workflows</button>
     <div class="focused-practice" aria-label="process overview focus view">
-      <section class="panel process-overview-panel" id="processOverviewPanel">
-        <header class="process-overview-head">
+      <section class="panel process-overview-panel process-overview-panel-secondary" id="processOverviewPanel">
+        <header class="process-overview-head process-overview-head-compact">
           <div>
             <p class="process-kicker">Guided walkthrough</p>
             <h3>${workflow.title}</h3>
             <p>${workflow.description || activeNode.subtitle}</p>
-            <button class="btn" id="workflowMenuButton" type="button">All workflows</button>
           </div>
-          <div class="process-session-pulse" aria-label="Session pulse">
+          <div class="process-session-pulse process-session-pulse-compact" aria-label="Session pulse">
             <span>Session pulse</span>
             <strong>${trackerProgress}% complete · Node ${state.processCurrentNodeIndex + 1} of ${totalNodes}</strong>
           </div>
         </header>
 
-        <div class="bar"><span style="width:${trackerProgress}%"></span></div>
-        <ol class="overview-node-tracker">${tracker}</ol>
+        <div class="process-overview-tracker-wrap">
+          <div class="bar process-overview-progress"><span style="width:${trackerProgress}%"></span></div>
+          <ol class="overview-node-tracker">${tracker}</ol>
+        </div>
       </section>
 
-      <section class="panel process-overview-content process-overview-focus ${processFocusStateClass}">
+      <section class="panel process-overview-content process-overview-content-primary process-overview-focus ${processFocusStateClass}">
         <div class="process-overview-main">
-          <p class="process-kicker process-kicker-inline">Active node</p>
+          <p class="process-kicker process-kicker-inline">Context</p>
           <h3>${activeNode.title}</h3>
         ${
           activeStep.type === "question"
@@ -1017,12 +1240,14 @@ const renderProcessOverview = () => {
   });
 
   document.getElementById("workflowMenuButton")?.addEventListener("click", () => {
+    state.processFlowAnimation = null;
     state.processOverviewView = "menu";
     renderProcessOverview();
   });
 
   appEl.querySelectorAll("[data-overview-node]").forEach((button) => {
     button.addEventListener("click", () => {
+      state.processFlowAnimation = null;
       state.processCurrentNodeIndex = Number(button.dataset.overviewNode);
       renderProcessOverview();
     });
@@ -1045,7 +1270,13 @@ const renderProcessOverview = () => {
     });
   });
 
-  document.getElementById("processNextStep")?.addEventListener("click", () => {
+  document.getElementById("processNextStep")?.addEventListener("click", async () => {
+    if (isQuestionStep && hasSelectedAnswer && !isAnswerCorrect) {
+      delete state.processCheckpointResponses[activeNode.id];
+      renderProcessOverview();
+      return;
+    }
+
     playProcessAdvanceClick();
     const nextStepIndex = activeStepIndex + 1;
 
@@ -1058,11 +1289,19 @@ const renderProcessOverview = () => {
     if (!state.processCompletedNodeIds.includes(activeNode.id)) {
       state.processCompletedNodeIds.push(activeNode.id);
       addFusionPoints(activeNode.reward);
+      persistProgress();
       spawnConfetti("processOverviewPanel");
       playProcessRightSound();
     }
 
+    if (state.processCompletedNodeIds.length === totalNodes) {
+      renderProcessOverviewCompletion(nodes);
+      return;
+    }
+
+    const completedIndex = state.processCurrentNodeIndex;
     const nextNodeIndex = Math.min(totalNodes - 1, state.processCurrentNodeIndex + 1);
+    triggerProcessFlowAnimation(completedIndex, nextNodeIndex);
     state.processCurrentNodeIndex = nextNodeIndex;
     if (state.processNodeStepIndexById[nodes[nextNodeIndex]?.id] === undefined) {
       state.processNodeStepIndexById[nodes[nextNodeIndex]?.id] = 0;
@@ -1099,7 +1338,12 @@ const lockAnswers = (buttons, selectedIndex, answerIndex) => {
 
 const renderPractice = () => {
   const lesson = findLesson(state.selectedLessonId);
+  const attemptStartedAt = Date.now();
   const lessonStatus = statusForLesson(lesson.id);
+  const lessonQuestionSet = lessonQuestions(lesson);
+  const storedQuestionIndex = Number(state.lessonQuestionIndexById[lesson.id] ?? 0);
+  const questionIndex = Math.max(0, Math.min(storedQuestionIndex, Math.max(lessonQuestionSet.length - 1, 0)));
+  state.lessonQuestionIndexById[lesson.id] = questionIndex;
 
   if (lessonStatus === "locked") {
     renderShell(
@@ -1112,8 +1356,12 @@ const renderPractice = () => {
     return;
   }
 
-  const progressValue = ((lessonIndex(lesson.id) + 1) / lessons().length) * 100;
-  const questionData = lesson.question || lessonQuestions(lesson)[0] || null;
+  const questionData = lessonQuestionSet[questionIndex] || null;
+  const questionNumber = questionIndex + 1;
+  const progressValue = lessonQuestionSet.length
+    ? (questionNumber / lessonQuestionSet.length) * 100
+    : 0;
+  const isFinalQuestion = questionNumber >= lessonQuestionSet.length;
   const isInformativeStep = questionData?.type === "informative";
   const hasMultipleChoice = Boolean(questionData) && Array.isArray(questionData.options) && typeof questionData.answer === "number";
   const questionTitle = questionData?.title || questionData?.prompt || "Question";
@@ -1133,11 +1381,11 @@ const renderPractice = () => {
   appEl.innerHTML = `
     <div class="focused-practice" aria-label="lesson focus view">
       <section class="panel lesson-progress compact">
-        <div class="row-in-a-row">${state.implementationStreak} IN A ROW • ${Math.round(progressValue)}% COURSE PROGRESS</div>
+        <div class="row-in-a-row">LESSON START • Q${questionNumber}/${lessonQuestionSet.length} • ${state.implementationStreak} IN A ROW • ${Math.round(progressValue)}% LESSON PROGRESS</div>
         <div class="bar"><span style="width:${Math.round(progressValue)}%"></span></div>
       </section>
       <section class="panel lesson-panel" id="lessonPanel">
-        <p class="lesson-kicker">${lesson.sectionSubtitle} • +${lesson.fusionPoints} Fusion Points</p>
+        <p class="lesson-kicker">${lesson.sectionSubtitle} • +${lesson.fusionPoints} XP</p>
         <h3>${questionTitle}</h3>
         ${questionBody ? `<p class="question-body">${questionBody}</p>` : ""}
         ${
@@ -1163,23 +1411,50 @@ const renderPractice = () => {
   `;
 
   const handleAttempt = (correct) => {
+    const timeToCompleteMs = Math.max(0, Date.now() - attemptStartedAt);
     state.attempts.push({ lessonId: lesson.id, correct, at: new Date().toISOString() });
+    persistQuestionAttempt({
+      questionId: `${lesson.id}-q${questionIndex + 1}`,
+      skillId: lesson.sectionId || "general",
+      correct,
+      timeToCompleteMs,
+    });
 
     const panel = document.getElementById("lessonPanel");
     const feedback = document.getElementById("feedbackText");
     const continueWrap = document.getElementById("continueWrap");
-    const moveToNextQuestion = () => {
-      const upcomingLessonId = nextLessonId(lesson.id);
-      if (!upcomingLessonId) {
-        navigate("/skills");
-        return;
+    const advanceWithinLesson = () => {
+      state.lessonQuestionIndexById[lesson.id] = Math.min(questionIndex + 1, Math.max(lessonQuestionSet.length - 1, 0));
+      renderPractice();
+    };
+    const finishLesson = () => {
+      state.lessonQuestionIndexById[lesson.id] = 0;
+      if (!state.completed.includes(lesson.id)) {
+        state.completed.push(lesson.id);
       }
-      state.selectedLessonId = upcomingLessonId;
-      if (getPath() === "/practice") {
-        renderPractice();
-        return;
-      }
-      navigate("/practice");
+      addFusionPoints(lesson.fusionPoints);
+      const unlockedLessonId = nextLessonId(lesson.id);
+      state.lessonMapAnimation = {
+        completedLessonId: lesson.id,
+        nextLessonId: unlockedLessonId,
+        stamp: Date.now(),
+      };
+      state.lastCompletion = {
+        title: lesson.title,
+        sectionSubtitle: lesson.sectionSubtitle,
+        fusionPoints: lesson.fusionPoints,
+        streak: state.implementationStreak,
+        mastery: masteryPercent(),
+        learned: questionTitle,
+        nextLessonId: unlockedLessonId,
+        correctAnswer: isInformativeStep
+          ? "Informative step completed"
+          : hasMultipleChoice
+            ? questionData.options[questionData.answer]
+            : questionData.answerText,
+      };
+      persistProgress();
+      navigate("/lesson-complete");
     };
 
     if (correct) {
@@ -1190,33 +1465,21 @@ const renderPractice = () => {
       feedback.textContent = "Nice work!";
       feedback.classList.add("ok");
       state.implementationStreak += 1;
-      if (!state.completed.includes(lesson.id)) {
-        state.completed.push(lesson.id);
-        addFusionPoints(lesson.fusionPoints);
-      }
+      persistProgress();
       continueWrap.className = "feedback-dock success";
       continueWrap.innerHTML = `
         <div>
           <strong>${ICON_CORRECT} Correct!</strong>
-          <p>You got this one right. Move on when you're ready.</p>
+          <p>You got this one right. ${isFinalQuestion ? "Finish this lesson when you're ready." : "Continue to the next question when you're ready."}</p>
         </div>
-        <button class="btn primary" id="continueLesson">Next question</button>
+        <button class="btn primary" id="continueLesson">${isFinalQuestion ? "Finish lesson" : "Next question"}</button>
       `;
       document.getElementById("continueLesson").addEventListener("click", () => {
-        state.lastCompletion = {
-          title: lesson.title,
-          sectionSubtitle: lesson.sectionSubtitle,
-          fusionPoints: lesson.fusionPoints,
-          streak: state.implementationStreak,
-          mastery: masteryPercent(),
-          learned: questionTitle,
-          correctAnswer: isInformativeStep
-            ? "Informative step completed"
-            : hasMultipleChoice
-              ? questionData.options[questionData.answer]
-              : questionData.answerText,
-        };
-        moveToNextQuestion();
+        if (isFinalQuestion) {
+          finishLesson();
+          return;
+        }
+        advanceWithinLesson();
       });
     } else {
       playWrongSound();
@@ -1225,16 +1488,22 @@ const renderPractice = () => {
       feedback.textContent = "Not quite. Try again.";
       feedback.classList.remove("ok");
       state.hearts = Math.max(0, state.hearts - 1);
-      if (!state.completed.includes(lesson.id)) state.completed.push(lesson.id);
+      persistProgress();
       continueWrap.className = "feedback-dock error";
       continueWrap.innerHTML = `
         <div>
           <strong>${ICON_INCORRECT} Incorrect.</strong>
           <p>Heart lost. Remaining hearts: ${state.hearts}</p>
         </div>
-        <button class="btn primary" id="nextAfterMiss">Next question</button>
+        <button class="btn primary" id="nextAfterMiss">${isFinalQuestion ? "Finish lesson" : "Next question"}</button>
       `;
-      document.getElementById("nextAfterMiss").addEventListener("click", moveToNextQuestion);
+      document.getElementById("nextAfterMiss").addEventListener("click", () => {
+        if (isFinalQuestion) {
+          finishLesson();
+          return;
+        }
+        advanceWithinLesson();
+      });
       setTimeout(() => panel.classList.remove("shake"), 400);
     }
   };
@@ -1282,6 +1551,10 @@ const renderDeveloper = () => {
     })),
   );
 
+  if (!["overview", "editor"].includes(state.developerViewMode)) {
+    state.developerViewMode = "overview";
+  }
+
   if (!customLessons.length) {
     state.developerSelectedLessonId = null;
     state.developerQuestionIndex = 0;
@@ -1311,60 +1584,13 @@ const renderDeveloper = () => {
     .join("");
 
   const unitOptions = customSections
-    .map((section) => `<option value="${section.id}">${section.title} — ${section.subtitle}</option>`)
+    .map((section) => `<option value="${section.id}">${section.title} - ${section.subtitle}</option>`)
     .join("");
 
   const lessonOptions = customLessons
     .map(
       (row) =>
-        `<option value="${row.lesson.id}" ${row.lesson.id === state.developerSelectedLessonId ? "selected" : ""}>${row.section.title} • ${row.lesson.title}</option>`,
-    )
-    .join("");
-
-  const questionPreview = selectedLessonRow
-    ? `
-      <div class="developer-preview-head">
-        <div>
-          <p class="developer-preview-kicker">Previewing lesson</p>
-          <h4>${selectedLessonRow.lesson.title}</h4>
-          <p>${selectedLessonRow.lesson.description}</p>
-        </div>
-        <span class="developer-preview-count">${selectedQuestions.length} question(s)</span>
-      </div>
-      ${
-        selectedQuestion
-          ? `
-            <div class="panel lesson-panel developer-preview-card" aria-label="question preview">
-              <p class="lesson-kicker">${selectedLessonRow.section.subtitle} • +${selectedLessonRow.lesson.fusionPoints} Fusion Points</p>
-              <h3>${selectedQuestion.title}</h3>
-              ${selectedQuestion.body ? `<p class="question-body">${selectedQuestion.body}</p>` : ""}
-              ${
-                selectedQuestion.type === "informative"
-                  ? '<p class="feedback ok">Knowledge break</p>'
-                  : `<p class="feedback ok">Answer: ${selectedQuestion.answerText}</p>`
-              }
-            </div>
-            <div class="developer-preview-controls">
-              <button class="btn" id="previewPrev" ${safeQuestionIndex === 0 ? "disabled" : ""}>Previous</button>
-              <span>Question ${safeQuestionIndex + 1} of ${selectedQuestions.length}</span>
-              <button class="btn" id="previewNext" ${safeQuestionIndex >= selectedQuestions.length - 1 ? "disabled" : ""}>Next</button>
-            </div>
-          `
-          : '<p class="empty-state">No questions yet for this lesson. Add one below.</p>'
-      }
-    `
-    : '<p class="empty-state">Create a lesson to start adding questions.</p>';
-
-  const questionRows = selectedQuestions
-    .map(
-      (question, index) => `
-      <li>
-        <button class="developer-question-jump ${index === safeQuestionIndex ? "active" : ""}" data-question-index="${index}">
-          <strong>${question.type === "informative" ? "Knowledge break" : "Question"} ${index + 1}</strong>
-          <small>${question.title}</small>
-        </button>
-      </li>
-    `,
+        `<option value="${row.lesson.id}" ${row.lesson.id === state.developerSelectedLessonId ? "selected" : ""}>${row.section.title} - ${row.lesson.title}</option>`,
     )
     .join("");
 
@@ -1374,20 +1600,34 @@ const renderDeveloper = () => {
       : Math.max(0, Math.min(Number(state.developerInsertIndex), selectedQuestions.length));
   state.developerInsertIndex = selectedInsertIndex >= selectedQuestions.length ? "end" : String(selectedInsertIndex);
 
-  const insertionSequence = selectedQuestions.length
-    ? selectedQuestions
-        .map((question, index) => {
-          const slotLabel = index + 1;
-          return `
-            <li><button class="developer-insert-slot ${String(selectedInsertIndex) === String(index) ? "active" : ""}" data-insert-index="${index}">+ Insert before ${question.type === "informative" ? "Knowledge break" : "Question"} ${slotLabel}</button></li>
-            <li class="developer-sequence-item">
-              <span class="developer-sequence-type">${question.type === "informative" ? "Knowledge break" : "Question"} ${slotLabel}</span>
-              <strong>${question.title}</strong>
-            </li>
-          `;
-        })
-        .join("")
-    : '<li><p class="empty-state">No content yet. Start by adding your first question or knowledge break.</p></li>';
+  const lessonOverviewRows = customLessons
+    .map((row) => {
+      const isActive = row.lesson.id === state.developerSelectedLessonId;
+      return `
+        <li>
+          <button class="developer-question-jump ${isActive ? "active" : ""}" data-lesson-id="${row.lesson.id}">
+            <strong>${row.lesson.title}</strong>
+            <small>${row.section.title} - ${row.questions.length} item(s)</small>
+          </button>
+        </li>
+      `;
+    })
+    .join("");
+
+  const questionRows = selectedQuestions
+    .map((question, index) => {
+      const isActive = index === safeQuestionIndex;
+      const kind = question.type === "informative" ? "Knowledge break" : "Question";
+      return `
+        <li>
+          <button class="developer-question-jump ${isActive ? "active" : ""}" data-question-index="${index}">
+            <strong>${kind} ${index + 1}</strong>
+            <small>${question.title}</small>
+          </button>
+        </li>
+      `;
+    })
+    .join("");
 
   const processNodeRows = processOverviewNodes
     .map(
@@ -1403,14 +1643,93 @@ const renderDeveloper = () => {
     )
     .join("");
 
+  const editorPanel = selectedLessonRow
+    ? `
+      <section class="panel">
+        <h3>Question editor</h3>
+        <p class="empty-state">Edit the selected item exactly as learners see it, then save changes.</p>
+        ${
+          selectedQuestion
+            ? `
+            <div class="panel lesson-panel developer-preview-card" aria-label="question preview">
+              <p class="lesson-kicker">${selectedLessonRow.section.subtitle} - +${LESSON_XP_REWARD} XP</p>
+              <h3>${selectedQuestion.title}</h3>
+              ${selectedQuestion.body ? `<p class="question-body">${selectedQuestion.body}</p>` : ""}
+              ${
+                selectedQuestion.type === "informative"
+                  ? '<p class="feedback ok">Knowledge break shown in lesson flow</p>'
+                  : `<p class="feedback ok">Expected answer: ${selectedQuestion.answerText || ""}</p>`
+              }
+            </div>
+            <form id="questionEditForm" class="developer-form">
+              <label>Content type
+                <select name="questionType">
+                  <option value="question" ${selectedQuestion.type === "question" ? "selected" : ""}>Question</option>
+                  <option value="informative" ${selectedQuestion.type === "informative" ? "selected" : ""}>Knowledge break</option>
+                </select>
+              </label>
+              <label>Title <input id="editQuestionTitle" name="questionTitle" required /></label>
+              <label>Body <textarea id="editQuestionBody" name="questionBody" rows="3" required></textarea></label>
+              <label>Correct answer <input id="editCorrectAnswer" name="correctAnswer" /></label>
+              <div class="developer-actions-row">
+                <button class="btn primary" type="submit">Save changes</button>
+                <button class="btn" id="deleteQuestion" type="button">Delete question</button>
+              </div>
+            </form>
+          `
+            : '<p class="empty-state">Select a question from the list to edit it.</p>'
+        }
+        ${state.developerSaveNotice ? `<p class="feedback ok">${state.developerSaveNotice}</p>` : ""}
+      </section>
+    `
+    : `
+      <section class="panel">
+        <h3>Question editor</h3>
+        <p class="empty-state">Create a unit and lesson first, then select a question to edit.</p>
+      </section>
+    `;
+
   renderShell(
     "Developer Mode",
-    "No-code builder for custom units, lessons, and multi-question lesson previews.",
+    "Overview lessons at a high level, pick a question, edit learner-facing content, and save.",
     null,
     `
+      <section class="panel developer-mode-switch">
+        <button class="btn ${state.developerViewMode === "overview" ? "primary" : ""}" type="button" id="developerOverviewMode">Overview</button>
+        <button class="btn ${state.developerViewMode === "editor" ? "primary" : ""}" type="button" id="developerEditorMode">Question editor</button>
+      </section>
+
+      ${
+        state.developerViewMode === "overview"
+          ? `
+            <section class="panel">
+              <h3>Lesson overview</h3>
+              ${
+                lessonOverviewRows
+                  ? `<ul class="developer-unit-list developer-question-list">${lessonOverviewRows}</ul>`
+                  : '<p class="empty-state">No custom lessons yet. Create one below.</p>'
+              }
+            </section>
+            <section class="panel">
+              <h3>Question overview</h3>
+              <p class="empty-state">${
+                selectedLessonRow
+                  ? `${selectedLessonRow.lesson.title} has ${selectedQuestions.length} item(s). Select one to edit.`
+                  : "Select a lesson to browse questions."
+              }</p>
+              ${
+                questionRows
+                  ? `<ul class="developer-unit-list developer-question-list">${questionRows}</ul>`
+                  : '<p class="empty-state">No questions found for this lesson.</p>'
+              }
+            </section>
+          `
+          : editorPanel
+      }
+
       <section class="panel developer-grid">
         <article>
-          <h3>Create Unit</h3>
+          <h3>Create unit</h3>
           <form id="unitForm" class="developer-form">
             <label>Unit title <input name="title" required placeholder="Section 2, Unit 1" /></label>
             <label>Unit subtitle <input name="subtitle" required placeholder="People Analytics" /></label>
@@ -1419,7 +1738,7 @@ const renderDeveloper = () => {
         </article>
 
         <article>
-          <h3>Create Lesson</h3>
+          <h3>Create lesson</h3>
           <form id="lessonBuilderForm" class="developer-form">
             <label>Unit
               <select name="sectionId" ${customSections.length ? "" : "disabled"} required>
@@ -1433,7 +1752,7 @@ const renderDeveloper = () => {
         </article>
 
         <article>
-          <h3>Add Question</h3>
+          <h3>Add question</h3>
           <form id="questionBuilderForm" class="developer-form">
             <label>Lesson
               <select name="lessonId" ${customLessons.length ? "" : "disabled"} required>
@@ -1459,9 +1778,9 @@ const renderDeveloper = () => {
         </article>
 
         <article>
-          <h3>Add Process Node</h3>
+          <h3>Add process node</h3>
           <form id="processNodeForm" class="developer-form">
-            <label>Node title <input name="nodeTitle" required placeholder="Manage & Develop" /></label>
+            <label>Node title <input name="nodeTitle" required placeholder="Manage and develop" /></label>
             <label>Node subtitle <input name="nodeSubtitle" required placeholder="Guide performance and growth" /></label>
             <label>Objective <textarea name="nodeObjective" rows="2" required placeholder="Explain this phase and what success looks like."></textarea></label>
             <label>Visual labels (comma separated) <input name="nodeVisuals" required placeholder="Goal dashboard, Learning timeline" /></label>
@@ -1485,19 +1804,6 @@ Distractor B"></textarea></label>
       </section>
 
       <section class="panel">
-        <h3>Question builder preview</h3>
-        ${questionPreview}
-      </section>
-
-      <section class="panel">
-        <h3>Current questions</h3>
-        ${questionRows ? `<ul class="developer-unit-list developer-question-list">${questionRows}</ul>` : '<p class="empty-state">Questions for the selected lesson will appear here.</p>'}
-        <h4 class="developer-sequence-heading">Insertion slots</h4>
-        <p class="empty-state">Choose a slot between questions and knowledge breaks, or use the end slot.</p>
-        <ul class="developer-sequence-list">${insertionSequence}<li><button class="developer-insert-slot ${state.developerInsertIndex === "end" ? "active" : ""}" data-insert-index="end">+ Insert at end of lesson</button></li></ul>
-      </section>
-
-      <section class="panel">
         <h3>Process node sequence</h3>
         <p class="empty-state">These power the Process Overview route and are fully editable for prototype iteration.</p>
         ${
@@ -1506,6 +1812,7 @@ Distractor B"></textarea></label>
             : '<p class="empty-state">No process nodes yet. Add one using the form above.</p>'
         }
         <div class="developer-actions-row">
+          <button class="btn" id="resetLessonsTesting" type="button">Reset lesson progress (testing)</button>
           <button class="btn" id="resetProcessProgress" type="button">Reset process progress</button>
           <button class="btn" id="restoreProcessDefaults" type="button">Restore default nodes</button>
         </div>
@@ -1526,8 +1833,13 @@ Distractor B"></textarea></label>
   const lessonBuilderForm = document.getElementById("lessonBuilderForm");
   const questionBuilderForm = document.getElementById("questionBuilderForm");
   const processNodeForm = document.getElementById("processNodeForm");
+  const questionEditForm = document.getElementById("questionEditForm");
   const questionLessonSelect = questionBuilderForm.querySelector('select[name="lessonId"]');
   const insertIndexSelect = questionBuilderForm.querySelector('select[name="insertIndex"]');
+
+  const setSaveNotice = (message) => {
+    state.developerSaveNotice = message;
+  };
 
   unitForm.title.value = developerDraft.unitTitle || "";
   unitForm.subtitle.value = developerDraft.unitSubtitle || "";
@@ -1551,6 +1863,48 @@ Distractor B"></textarea></label>
   if (["question", "informative"].includes(developerDraft.questionType)) {
     questionBuilderForm.questionType.value = developerDraft.questionType;
   }
+  if (questionEditForm && selectedQuestion) {
+    const editType = questionEditForm.querySelector('select[name="questionType"]');
+    const editTitle = questionEditForm.querySelector("#editQuestionTitle");
+    const editBody = questionEditForm.querySelector("#editQuestionBody");
+    const editAnswer = questionEditForm.querySelector("#editCorrectAnswer");
+    if (editType) editType.value = selectedQuestion.type === "informative" ? "informative" : "question";
+    if (editTitle) editTitle.value = selectedQuestion.title || "";
+    if (editBody) editBody.value = selectedQuestion.body || "";
+    if (editAnswer) editAnswer.value = selectedQuestion.answerText || "";
+  }
+
+  const rebuildInsertOptions = (lessonId) => {
+    if (!insertIndexSelect) return;
+    const lesson = customSections
+      .flatMap((section) => section.lessons)
+      .find((item) => item.id === lessonId);
+    const questionsForLesson = lesson ? lessonQuestions(lesson) : [];
+    const options = [`<option value="end">End of lesson</option>`];
+
+    questionsForLesson.forEach((question, index) => {
+      const label = question.type === "informative" ? "knowledge break" : "question";
+      options.push(`<option value="${index}">Before ${label} ${index + 1}</option>`);
+    });
+
+    insertIndexSelect.innerHTML = options.join("");
+    const preferred = state.developerInsertIndex === "end" ? "end" : String(state.developerInsertIndex);
+    const hasPreferred = Array.from(insertIndexSelect.options).some((option) => option.value === preferred);
+    insertIndexSelect.value = hasPreferred ? preferred : "end";
+    state.developerInsertIndex = insertIndexSelect.value;
+  };
+
+  rebuildInsertOptions(questionLessonSelect?.value);
+
+  document.getElementById("developerOverviewMode")?.addEventListener("click", () => {
+    state.developerViewMode = "overview";
+    renderDeveloper();
+  });
+
+  document.getElementById("developerEditorMode")?.addEventListener("click", () => {
+    state.developerViewMode = "editor";
+    renderDeveloper();
+  });
 
   unitForm.addEventListener("submit", (event) => {
     event.preventDefault();
@@ -1568,6 +1922,7 @@ Distractor B"></textarea></label>
     });
     saveCustomSections();
     clearDeveloperDraftSection(["unitTitle", "unitSubtitle"]);
+    setSaveNotice("Unit added.");
     renderDeveloper();
   });
 
@@ -1584,6 +1939,7 @@ Distractor B"></textarea></label>
       lessonDescription: lessonBuilderForm.lessonDescription.value,
     });
   });
+
   lessonBuilderForm.addEventListener("submit", (event) => {
     event.preventDefault();
     const form = event.currentTarget;
@@ -1596,46 +1952,24 @@ Distractor B"></textarea></label>
     if (!lessonTitle || !lessonDescription) return;
 
     const lessonId = `custom-lesson-${Date.now()}`;
-
     section.lessons.push({
       id: lessonId,
       title: lessonTitle,
       description: lessonDescription,
-      fusionPoints: 20,
-      questions: [],
+      fusionPoints: LESSON_XP_REWARD,
+      questions: buildAutofillQuestions(lessonTitle),
     });
 
     state.developerSelectedLessonId = lessonId;
     state.developerQuestionIndex = 0;
     state.developerInsertIndex = "end";
+    state.developerViewMode = "overview";
     saveCustomSections();
     clearDeveloperDraftSection(["lessonTitle", "lessonDescription"]);
+    setSaveNotice("Lesson added.");
     form.reset();
     renderDeveloper();
   });
-
-  const rebuildInsertOptions = (lessonId) => {
-    if (!insertIndexSelect) return;
-    const lesson = customSections
-      .flatMap((section) => section.lessons)
-      .find((item) => item.id === lessonId);
-    const questionsForLesson = lesson ? lessonQuestions(lesson) : [];
-    const options = [`<option value="end">End of lesson</option>`];
-
-    questionsForLesson.forEach((question, index) => {
-      const label = question.type === "informative" ? "knowledge break" : "question";
-      options.push(`<option value="${index}">Before ${label} ${index + 1}</option>`);
-    });
-
-    insertIndexSelect.innerHTML = options.join("");
-
-    const preferred = state.developerInsertIndex === "end" ? "end" : String(state.developerInsertIndex);
-    const hasPreferred = Array.from(insertIndexSelect.options).some((option) => option.value === preferred);
-    insertIndexSelect.value = hasPreferred ? preferred : "end";
-    state.developerInsertIndex = insertIndexSelect.value;
-  };
-
-  rebuildInsertOptions(questionLessonSelect?.value);
 
   questionBuilderForm.addEventListener("submit", (event) => {
     event.preventDefault();
@@ -1679,16 +2013,15 @@ Distractor B"></textarea></label>
           };
 
     customLesson.questions.splice(insertIndex, 0, questionEntry);
-
-    if (!customLesson.question) {
-      customLesson.question = questionEntry;
-    }
+    if (!customLesson.question) customLesson.question = questionEntry;
 
     state.developerSelectedLessonId = customLesson.id;
     state.developerQuestionIndex = insertIndex;
     state.developerInsertIndex = String(insertIndex + 1);
+    state.developerViewMode = "editor";
     saveCustomSections();
     clearDeveloperDraftSection(["questionTitle", "questionBody", "correctAnswer"]);
+    setSaveNotice("Question added.");
     form.reset();
     renderDeveloper();
   });
@@ -1704,6 +2037,92 @@ Distractor B"></textarea></label>
 
   questionBuilderForm.querySelector('select[name="questionType"]')?.addEventListener("change", (event) => {
     saveDeveloperDraft({ questionType: event.target.value });
+  });
+
+  questionLessonSelect?.addEventListener("change", (event) => {
+    state.developerSelectedLessonId = event.target.value;
+    state.developerQuestionIndex = 0;
+    state.developerInsertIndex = "end";
+    rebuildInsertOptions(event.target.value);
+    renderDeveloper();
+  });
+
+  insertIndexSelect?.addEventListener("change", (event) => {
+    state.developerInsertIndex = event.target.value;
+    renderDeveloper();
+  });
+
+  questionEditForm?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const selectedLesson = customSections
+      .flatMap((section) => section.lessons)
+      .find((lesson) => lesson.id === state.developerSelectedLessonId);
+    if (!selectedLesson) return;
+
+    if (!Array.isArray(selectedLesson.questions)) {
+      selectedLesson.questions = lessonQuestions(selectedLesson);
+    }
+
+    const question = selectedLesson.questions[state.developerQuestionIndex];
+    if (!question) return;
+
+    const questionType = form.questionType.value;
+    const title = form.questionTitle.value.trim();
+    const body = form.questionBody.value.trim();
+    const correctAnswer = form.correctAnswer.value.trim();
+
+    if (!title || !body) return;
+    if (questionType !== "informative" && !correctAnswer) return;
+
+    const updatedQuestion =
+      questionType === "informative"
+        ? {
+            type: "informative",
+            title,
+            body,
+          }
+        : {
+            type: "question",
+            title,
+            body,
+            answerText: correctAnswer,
+          };
+
+    selectedLesson.questions[state.developerQuestionIndex] = updatedQuestion;
+    if (state.developerQuestionIndex === 0) {
+      selectedLesson.question = updatedQuestion;
+    }
+
+    saveCustomSections();
+    setSaveNotice(`Saved changes to item ${state.developerQuestionIndex + 1}.`);
+    renderDeveloper();
+  });
+
+  document.getElementById("deleteQuestion")?.addEventListener("click", () => {
+    const selectedLesson = customSections
+      .flatMap((section) => section.lessons)
+      .find((lesson) => lesson.id === state.developerSelectedLessonId);
+    if (!selectedLesson) return;
+
+    if (!Array.isArray(selectedLesson.questions)) {
+      selectedLesson.questions = lessonQuestions(selectedLesson);
+    }
+
+    if (state.developerQuestionIndex < 0 || state.developerQuestionIndex >= selectedLesson.questions.length) return;
+    selectedLesson.questions.splice(state.developerQuestionIndex, 1);
+
+    if (selectedLesson.questions.length) {
+      selectedLesson.question = selectedLesson.questions[0];
+      state.developerQuestionIndex = Math.max(0, Math.min(state.developerQuestionIndex, selectedLesson.questions.length - 1));
+    } else {
+      delete selectedLesson.question;
+      state.developerQuestionIndex = 0;
+    }
+
+    saveCustomSections();
+    setSaveNotice("Question removed.");
+    renderDeveloper();
   });
 
   processNodeForm.addEventListener("submit", (event) => {
@@ -1725,7 +2144,6 @@ Distractor B"></textarea></label>
     if (visuals.length === 0 || walkthrough.length === 0 || checkpointOptions.length < 2) return;
 
     const answerIndex = Math.max(0, Math.min(Number(form.checkpointAnswer.value) - 1, checkpointOptions.length - 1));
-
     processOverviewNodes.push({
       id: `custom-process-node-${Date.now()}`,
       title: form.nodeTitle.value.trim(),
@@ -1759,6 +2177,7 @@ Distractor B"></textarea></label>
     form.checkpointAnswer.value = "1";
     form.checkpointPlacement.value = "end";
     form.nodeReward.value = "30";
+    setSaveNotice("Process node added.");
     renderDeveloper();
   });
 
@@ -1777,23 +2196,20 @@ Distractor B"></textarea></label>
     });
   });
 
-  questionLessonSelect?.addEventListener("change", (event) => {
-    state.developerSelectedLessonId = event.target.value;
-    state.developerQuestionIndex = 0;
-    state.developerInsertIndex = "end";
-    rebuildInsertOptions(event.target.value);
-    renderDeveloper();
-  });
-
-  insertIndexSelect?.addEventListener("change", (event) => {
-    state.developerInsertIndex = event.target.value;
-    renderDeveloper();
-  });
-
-  appEl.querySelectorAll("[data-insert-index]").forEach((button) => {
+  appEl.querySelectorAll("[data-lesson-id]").forEach((button) => {
     button.addEventListener("click", () => {
-      state.developerInsertIndex = button.dataset.insertIndex;
-      if (insertIndexSelect) insertIndexSelect.value = state.developerInsertIndex;
+      state.developerSelectedLessonId = button.dataset.lessonId;
+      state.developerQuestionIndex = 0;
+      state.developerInsertIndex = "end";
+      state.developerViewMode = "overview";
+      renderDeveloper();
+    });
+  });
+
+  appEl.querySelectorAll("[data-question-index]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.developerQuestionIndex = Number(button.dataset.questionIndex);
+      state.developerViewMode = "editor";
       renderDeveloper();
     });
   });
@@ -1804,57 +2220,33 @@ Distractor B"></textarea></label>
       if (!Number.isInteger(index) || index < 0 || index >= processOverviewNodes.length) return;
       processOverviewNodes.splice(index, 1);
       saveProcessOverviewNodes();
-      state.processCurrentNodeIndex = 0;
-      state.processCompletedNodeIds = [];
-      state.processCheckpointResponses = {};
-      state.processNodeStepIndexById = {};
+      resetProcessOverviewProgress();
+      setSaveNotice("Process node removed.");
       renderDeveloper();
     });
   });
 
   document.getElementById("resetProcessProgress")?.addEventListener("click", () => {
-    state.processCurrentNodeIndex = 0;
-    state.processCompletedNodeIds = [];
-    state.processCheckpointResponses = {};
-    state.processNodeStepIndexById = {};
+    resetProcessOverviewProgress();
+    setSaveNotice("Process progress reset.");
+    renderDeveloper();
+  });
+
+  document.getElementById("resetLessonsTesting")?.addEventListener("click", async () => {
+    resetLessonsForTesting();
+    await persistProgress();
+    setSaveNotice("Lesson progress reset.");
     renderDeveloper();
   });
 
   document.getElementById("restoreProcessDefaults")?.addEventListener("click", () => {
     processOverviewNodes = [...baseProcessOverviewNodes];
     saveProcessOverviewNodes();
-    state.processCurrentNodeIndex = 0;
-    state.processCompletedNodeIds = [];
-    state.processCheckpointResponses = {};
-    state.processNodeStepIndexById = {};
+    resetProcessOverviewProgress();
+    setSaveNotice("Process defaults restored.");
     renderDeveloper();
   });
-
-  const previewPrev = document.getElementById("previewPrev");
-  const previewNext = document.getElementById("previewNext");
-
-  if (previewPrev) {
-    previewPrev.addEventListener("click", () => {
-      state.developerQuestionIndex = Math.max(0, state.developerQuestionIndex - 1);
-      renderDeveloper();
-    });
-  }
-
-  if (previewNext) {
-    previewNext.addEventListener("click", () => {
-      state.developerQuestionIndex += 1;
-      renderDeveloper();
-    });
-  }
-
-  appEl.querySelectorAll("[data-question-index]").forEach((button) => {
-    button.addEventListener("click", () => {
-      state.developerQuestionIndex = Number(button.dataset.questionIndex);
-      renderDeveloper();
-    });
-  });
 };
-
 const renderLessonComplete = () => {
   const completion = state.lastCompletion;
   if (!completion) {
@@ -1866,11 +2258,12 @@ const renderLessonComplete = () => {
     <div class="focused-practice" aria-label="lesson completion view">
       <section class="panel completion-panel" id="completionPanel">
         <div class="completion-badge">🏆 Lesson Complete</div>
-        <h2>Great work, ${state.profile.name}!</h2>
-        <p class="completion-subtitle">You finished <strong>${completion.title}</strong> in ${completion.sectionSubtitle}.</p>
+        <h2>🎉 Congratulations, ${state.profile.name}!</h2>
+        <p class="completion-subtitle">You reached the end of <strong>${completion.title}</strong> in ${completion.sectionSubtitle}.</p>
 
         <div class="reward-grid">
-          <article class="reward-card"><span>⚡</span><strong>+${completion.fusionPoints} Fusion Points</strong></article>
+          <article class="reward-card"><span>⚡</span><strong>+${completion.fusionPoints} XP earned</strong></article>
+          <article class="reward-card"><span>📈</span><strong>${XP_PER_LEVEL} XP to level up</strong></article>
           <article class="reward-card"><span>🔥</span><strong>${completion.streak} day streak</strong></article>
           <article class="reward-card"><span>🧠</span><strong>${completion.mastery}% mastery unlocked</strong></article>
         </div>
@@ -1882,8 +2275,9 @@ const renderLessonComplete = () => {
         </section>
 
         <div class="completion-cta">
-          <p>Returning to your learning map for the next lesson...</p>
-          <button id="backToMap" class="btn primary">Continue to Learning Map</button>
+          <p>Lesson end reached. Choose your next step.</p>
+          <button id="continueAfterLesson" class="btn primary">${completion.nextLessonId ? "Start Next Lesson" : "Continue to Learning Map"}</button>
+          <button id="backToMap" class="btn">Back to Learning Map</button>
         </div>
       </section>
     </div>
@@ -1893,15 +2287,23 @@ const renderLessonComplete = () => {
   panel.classList.add("celebrate");
   for (let i = 0; i < 2; i += 1) setTimeout(spawnConfetti, i * 220);
 
+  const continueAfterLesson = () => {
+    state.lastCompletion = null;
+    if (completion.nextLessonId) {
+      state.selectedLessonId = completion.nextLessonId;
+      navigate("/practice");
+      return;
+    }
+    navigate("/skills");
+  };
+
   const goToMap = () => {
     state.lastCompletion = null;
     navigate("/skills");
   };
 
+  document.getElementById("continueAfterLesson").addEventListener("click", continueAfterLesson);
   document.getElementById("backToMap").addEventListener("click", goToMap);
-  setTimeout(() => {
-    if (getPath() === "/lesson-complete") goToMap();
-  }, 4500);
 };
 
 const renderReview = () => {
@@ -1919,8 +2321,9 @@ const renderReview = () => {
     `,
   );
 
-  document.getElementById("reviewReward").addEventListener("click", () => {
+  document.getElementById("reviewReward").addEventListener("click", async () => {
     addFusionPoints(10);
+    await persistProgress();
     const button = document.getElementById("reviewReward");
     button.textContent = "Completed";
     button.disabled = true;
@@ -2022,17 +2425,24 @@ const bootstrapAuth = async () => {
 
     state.session = data.session;
     state.authError = null;
+    await loadPersistedUserState();
   } catch (error) {
     console.error("Auth bootstrap failed", error);
     state.session = null;
+    resetProgressState();
     state.authError = "We could not verify your Supabase session. Please check your Supabase URL/key and network, then try logging in.";
   } finally {
     state.authReady = true;
   }
 
-  supabase.auth.onAuthStateChange((_event, session) => {
+  supabase.auth.onAuthStateChange(async (_event, session) => {
     state.session = session;
     state.authError = null;
+    if (session) {
+      await loadPersistedUserState();
+    } else {
+      resetProgressState();
+    }
     renderRoute();
   });
 };
@@ -2056,3 +2466,5 @@ window.addEventListener("load", async () => {
   await bootstrapAuth();
   renderRoute();
 });
+
+
